@@ -80,3 +80,4 @@ docker-compose.override.yml
 
 # Generated models
 app/models/mysql/generated_models.py
+test.py

@@ -6,10 +6,13 @@ from fastapi import APIRouter, Request, HTTPException, Response
 
 from app.services.auth_service import AuthService
 from app.services import ncalayer
-from app.db.session import redis_client
+from app.db.session import redis_client, get_mysql_session
+from app.dao.mysql import StudentDAO, TutorDAO
 
 from .schemas import (NcalayerVerifyRequest, GetChallengeResponse, NcalayerVerifyResponse, PlatonusLoginRequest,
                       PlatonusLoginResponse, RefreshTokenResponse)
+
+from app.schemas_internal import User
 
 
 router = APIRouter()
@@ -50,8 +53,20 @@ async def ncalayer_verify(data: NcalayerVerifyRequest, response: Response):
     if not user_ecp_info.iin_number:
         raise HTTPException(status_code=400, detail="IIN not found in certificate")
 
-    user = await AuthService.authenticate_by_ecp(user_ecp_info)
-    tokens = AuthService.create_tokens(user)
+    user_model = await AuthService.authenticate_by_ecp(user_ecp_info)
+    tokens = AuthService.create_tokens(user_model)
+    print(user_ecp_info.model_dump())
+
+    firstname = user_ecp_info.firstname
+    lastname = user_ecp_info.lastname
+    patronymic = user_ecp_info.patronymic
+
+    result_user = User(
+        id=user_model.id,
+        firstname=firstname,
+        lastname=lastname,
+        patronymic=patronymic,
+    )
 
     response.set_cookie(
         key="refresh_token",
@@ -62,7 +77,7 @@ async def ncalayer_verify(data: NcalayerVerifyRequest, response: Response):
         max_age=7 * 24 * 60 * 60,  # 7 дней
     )
 
-    return {'access_token': tokens.access_token, 'user': user}
+    return {'access_token': tokens.access_token, 'user': result_user}
 
 
 @router.post("/platonus/login", response_model=PlatonusLoginResponse)
@@ -70,12 +85,29 @@ async def platonus_login(data: PlatonusLoginRequest, response: Response):
     if not data.login.strip() or not data.password.strip():
         raise HTTPException(status_code=400, detail="Login or password is empty")
 
-    user = await AuthService.authenticate_by_platonus(data.login, data.password)
+    user_model = await AuthService.authenticate_by_platonus(data.login, data.password)
 
-    if user is None:
+    if user_model is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    tokens = AuthService.create_tokens(user)
+    tokens = AuthService.create_tokens(user_model)
+
+    async with get_mysql_session() as mysql_session:
+        if user_model.is_student:
+            platonus_user = await StudentDAO(mysql_session).get_one_or_none(StudentID=user_model.platonus_id)
+        else:
+            platonus_user = await TutorDAO(mysql_session).get_one_or_none(TutorID=user_model.platonus_id)
+
+        firstname = platonus_user.firstname
+        lastname = platonus_user.lastname
+        patronymic = platonus_user.patronymic
+
+    result_user = User(
+        id=user_model.id,
+        firstname=firstname,
+        lastname=lastname,
+        patronymic=patronymic,
+    )
 
     response.set_cookie(
         key="refresh_token",
@@ -86,7 +118,7 @@ async def platonus_login(data: PlatonusLoginRequest, response: Response):
         max_age=7 * 24 * 60 * 60,  # 7 дней
     )
 
-    return {'access_token': tokens.access_token, 'user': user}
+    return {'access_token': tokens.access_token, 'user': result_user}
 
 
 @router.post("/refresh", response_model=RefreshTokenResponse)

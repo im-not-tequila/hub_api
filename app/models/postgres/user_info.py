@@ -17,9 +17,9 @@ class UserInfo(PostgresBase):
         index=True
     )
 
-    name: Mapped[str] = mapped_column(Text, nullable=True)
-    surname: Mapped[str] = mapped_column(Text, nullable=True)
-    given_name: Mapped[str] = mapped_column(Text, nullable=True)
+    lastname: Mapped[str] = mapped_column(Text, nullable=True)
+    firstname: Mapped[str] = mapped_column(Text, nullable=True)
+    patronymic: Mapped[str] = mapped_column(Text, nullable=True)
     iin_number: Mapped[str] = mapped_column(Text, nullable=False)
 
     created_at: Mapped[DateTime] = mapped_column(

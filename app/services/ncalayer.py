@@ -51,6 +51,7 @@ def extract_info(base64_signature: str) -> UserEcpInfo:
     cert_der = _get_cert_der(content_info)
 
     subject = cert_der['tbs_certificate']['subject'].native
+    print(subject)
 
     return UserEcpInfo(**subject)
 

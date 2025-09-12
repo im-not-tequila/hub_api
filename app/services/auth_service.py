@@ -6,9 +6,9 @@ from jose.exceptions import JWTError, ExpiredSignatureError
 from app.core.settings import get_settings
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserDAO, UserInfoDAO
-from app.models.postgres import User
+from app.models.postgres import User as UserModel
 from app.db.session import get_postgres_session, get_mysql_session
-from app.schemas_internal import UserEcpInfo, Tokens, User
+from app.schemas_internal import UserEcpInfo, Tokens
 
 
 settings = get_settings()
@@ -16,7 +16,7 @@ settings = get_settings()
 
 class AuthService:
     @staticmethod
-    async def authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> User:
+    async def authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> UserModel:
         async with get_postgres_session() as postgres_session:
             async with get_mysql_session() as mysql_session:
                 tutor_dao = TutorDAO(mysql_session)
@@ -31,8 +31,6 @@ class AuthService:
                         user = await user_dao.add(platonus_id=tutor.TutorID, is_student=False)
 
                 if user:
-                    user = User(id=user.id)
-
                     return user
 
                 student_dao = StudentDAO(mysql_session)
@@ -49,18 +47,16 @@ class AuthService:
                     user = await user_dao.add(platonus_id=None, is_student=False)
                     await user_info_dao.add(
                         user_id=user.id,
-                        name=user_ecp_info.name,
-                        surname=user_ecp_info.surname,
-                        given_name=user_ecp_info.given_name,
+                        lastname=user_ecp_info.lastname,
+                        firstname=user_ecp_info.firstname,
+                        patronymic=user_ecp_info.patronymic,
                         iin_number=user_ecp_info.iin_number
                     )
-
-                user = User(id=user.id)
 
                 return user
 
     @staticmethod
-    async def authenticate_by_platonus(login: str, password: str) -> User:
+    async def authenticate_by_platonus(login: str, password: str) -> UserModel:
         async with get_postgres_session() as postgres_session:
             async with get_mysql_session() as mysql_session:
                 tutor_dao = TutorDAO(mysql_session)
@@ -89,7 +85,7 @@ class AuthService:
                 return user
 
     @staticmethod
-    def _create_access_token(user: User):
+    def _create_access_token(user: UserModel):
         now = datetime.now(UTC)
 
         access_payload = {
@@ -102,7 +98,7 @@ class AuthService:
         return jwt.encode(access_payload, settings.SECRET_KEY)
 
     @staticmethod
-    def _create_refresh_token(user: User):
+    def _create_refresh_token(user: UserModel):
         now = datetime.now(UTC)
 
         refresh_payload = {
@@ -115,7 +111,7 @@ class AuthService:
         return jwt.encode(refresh_payload, settings.SECRET_KEY)
 
     @classmethod
-    def create_tokens(cls, user: User) -> Tokens:
+    def create_tokens(cls, user: UserModel) -> Tokens:
         """
         Создание пары токенов: access + refresh.
         """

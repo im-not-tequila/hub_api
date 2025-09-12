@@ -6,16 +6,16 @@ from typing import Optional
 
 
 class UserEcpInfo(BaseModel):
-    name: str = Field(alias='common_name')
-    surname: str
-    given_name: str
+    firstname: str = Field(alias='common_name')
+    lastname: str = Field(alias='surname')
+    patronymic: Optional[str] = Field(default=None, alias='given_name')
     iin_number: str = Field(alias='serial_number')
     bin_number: Optional[str] = Field(default=None, alias='ou')
 
     class Config:
         populate_by_name = True
 
-    @field_validator('name', mode='before')
+    @field_validator('firstname', mode='before')
     def extract_name_from_common_name(cls, value):
         try:
             return value.split(' ')[1]
