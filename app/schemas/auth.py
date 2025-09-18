@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from app.schemas_internal import User
+from .user import UserResponse
 
 
 class NcalayerVerifyRequest(BaseModel):
@@ -9,15 +9,7 @@ class NcalayerVerifyRequest(BaseModel):
 
 class NcalayerVerifyResponse(BaseModel):
     access_token: str
-    user: User
-
-
-class GetChallengeResponse(BaseModel):
-    challenge: str
-
-
-class RefreshToken(BaseModel):
-    refresh_token: str
+    user: UserResponse
 
 
 class PlatonusLoginRequest(BaseModel):
@@ -27,7 +19,15 @@ class PlatonusLoginRequest(BaseModel):
 
 class PlatonusLoginResponse(BaseModel):
     access_token: str
-    user: User
+    user: UserResponse
+
+
+class GetChallengeResponse(BaseModel):
+    challenge: str
+
+
+class RefreshToken(BaseModel):
+    refresh_token: str
 
 
 class RefreshTokenResponse(BaseModel):

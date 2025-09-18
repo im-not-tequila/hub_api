@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 
-class User(BaseModel):
+class UserResponse(BaseModel):
     id: int
     firstname: str
     lastname: str

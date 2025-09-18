@@ -1,7 +1,19 @@
 from pydantic import BaseModel
+from typing import Optional
 
-from app.schemas_internal import User
+from app.schemas import UserResponse
 
 
 class MeResponse(BaseModel):
-    user: User
+    user: UserResponse
+
+class TutorWithPosition(BaseModel):
+    tutor_id: int
+    lastname: Optional[str]
+    firstname: Optional[str]
+    patronymic: Optional[str]
+    position_name: Optional[str]
+
+    class Config:
+        orm_mode = True
+

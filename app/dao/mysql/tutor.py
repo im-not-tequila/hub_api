@@ -2,7 +2,8 @@ import hashlib
 
 from app.dao.base import MySQLDao
 from app.models.mysql.tutor import Tutor
-from sqlalchemy import select
+from app.models.mysql.structural_subdivision import StructuralSubdivision
+from sqlalchemy import select, or_
 
 
 class TutorDAO(MySQLDao):
@@ -24,3 +25,26 @@ class TutorDAO(MySQLDao):
         result = await self.session.execute(stmt)
 
         return result.scalar_one_or_none()
+
+    async def get_tutors_and_position(self):
+        stmt = (
+            select(
+                Tutor.TutorID,
+                Tutor.lastname,
+                Tutor.firstname,
+                Tutor.patronymic,
+                StructuralSubdivision.nameru,
+                StructuralSubdivision.namekz,
+                StructuralSubdivision.nameen,
+            )
+            .join(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
+            .where(
+
+                StructuralSubdivision.subdivision_type.in_([0, 1, 2, 3])
+            )
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.mappings().all()
+
+        return rows

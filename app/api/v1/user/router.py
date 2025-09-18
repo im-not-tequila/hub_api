@@ -1,17 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from typing import List
 
 from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas_internal import User
+from app.schemas import UserResponse
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserInfoDAO
 from app.db.session import get_mysql_session, get_postgres_session
+from .schemas import TutorWithPosition
 
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=User)
+@router.get("/me", response_model=UserResponse)
 async def get_me(current_user: UserModel = Depends(get_current_user)):
     """
     Получение информации о текущем пользователе.
@@ -34,7 +36,7 @@ async def get_me(current_user: UserModel = Depends(get_current_user)):
             lastname = user_info.lastname
             patronymic = user_info.patronymic
 
-    result_user = User(
+    result_user = UserResponse(
         id=current_user.id,
         firstname=firstname,
         lastname=lastname,
@@ -42,3 +44,33 @@ async def get_me(current_user: UserModel = Depends(get_current_user)):
     )
 
     return result_user
+
+
+@router.get("/all_tutors_with_position", response_model=List[TutorWithPosition])
+async def get_all_tutors_with_position(
+    lang: str = Query('ru', description="Язык: ru, kz, en"),
+    current_user: UserModel = Depends(get_current_user)
+):
+    async with get_mysql_session() as mysql_session:
+        all_tutors_and_position = await TutorDAO(mysql_session).get_tutors_and_position()
+
+        # Определяем поле name в зависимости от языка
+        name_field = {
+            'ru': 'nameru',
+            'kz': 'namekz',
+            'en': 'nameen'
+        }.get(lang, 'nameru')
+
+        # Формируем финальный список для ответа
+        response = [
+            {
+                "tutor_id": item["TutorID"],
+                "lastname": item["lastname"],
+                "firstname": item["firstname"],
+                "patronymic": item["patronymic"],
+                "position_name": item[name_field]
+            }
+            for item in all_tutors_and_position
+        ]
+
+        return response

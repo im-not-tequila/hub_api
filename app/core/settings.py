@@ -30,10 +30,14 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str
     REDIS_DATABASE: int
 
-    CURRENT_DIRECTORY: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent.parent
+    CURRENT_DIRECTORY: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent
+    STORAGE_DIRECTORY: ClassVar[Path] = CURRENT_DIRECTORY / "storage"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        if not self.STORAGE_DIRECTORY.exists():
+            self.STORAGE_DIRECTORY.mkdir(parents=True)
 
 def get_settings() -> Settings:
     return Settings()

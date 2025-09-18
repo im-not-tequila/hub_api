@@ -16,6 +16,10 @@ from app.models.postgres.user import User
 from app.models.postgres.user_info import UserInfo
 from app.models.postgres.role import Role
 from app.models.postgres.user_role import user_roles
+from app.models.postgres.document import Document
+from app.models.postgres.document_type import DocumentType
+from app.models.postgres.document_type_group import DocumentTypeGroup
+from app.models.postgres.approver import Approver
 
 
 config = context.config

@@ -1,14 +1,16 @@
 from enum import Enum
 from typing import List, Optional
-
 from datetime import date
+
 from pydantic import BaseModel, Field, HttpUrl
 
 
-# class ParticipantStatus(str, Enum):
-#     SIGNED = 'Утвержден'
-#     REJECTED = 'Отклонен'
-#     PENDING = 'На согласовании'
+class DocumentUploadRequest(BaseModel):
+    document_name: str
+    document_type_id: int
+    recipient_id: int
+    approver_user_ids: List[int]
+    cms: str
 
 
 class DocumentStatus(str, Enum):

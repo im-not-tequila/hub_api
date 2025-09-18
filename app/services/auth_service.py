@@ -1,3 +1,7 @@
+import secrets
+import string
+import base64
+
 from fastapi import HTTPException
 from datetime import datetime, timedelta, UTC
 from jose import jwt
@@ -7,8 +11,9 @@ from app.core.settings import get_settings
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserDAO, UserInfoDAO
 from app.models.postgres import User as UserModel
-from app.db.session import get_postgres_session, get_mysql_session
-from app.schemas_internal import UserEcpInfo, Tokens
+from app.db.session import get_postgres_session, get_mysql_session, redis_client
+from app.schemas import NcalayerVerifyRequest, UserEcpInfo, Tokens, UserResponse, PlatonusLoginRequest
+from app.services.ncanode import NCANode
 
 
 settings = get_settings()
@@ -16,7 +21,7 @@ settings = get_settings()
 
 class AuthService:
     @staticmethod
-    async def authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> UserModel:
+    async def _authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> UserModel:
         async with get_postgres_session() as postgres_session:
             async with get_mysql_session() as mysql_session:
                 tutor_dao = TutorDAO(mysql_session)
@@ -56,7 +61,7 @@ class AuthService:
                 return user
 
     @staticmethod
-    async def authenticate_by_platonus(login: str, password: str) -> UserModel:
+    async def _authenticate_by_platonus(login: str, password: str) -> UserModel:
         async with get_postgres_session() as postgres_session:
             async with get_mysql_session() as mysql_session:
                 tutor_dao = TutorDAO(mysql_session)
@@ -111,7 +116,7 @@ class AuthService:
         return jwt.encode(refresh_payload, settings.SECRET_KEY)
 
     @classmethod
-    def create_tokens(cls, user: UserModel) -> Tokens:
+    def _create_tokens(cls, user: UserModel) -> Tokens:
         """
         Создание пары токенов: access + refresh.
         """
@@ -126,6 +131,50 @@ class AuthService:
         )
 
         return tokens
+
+    @staticmethod
+    async def ncalayer_challenge() -> str:
+        alphabet = string.ascii_letters + string.digits
+        challenge_string = ''.join(secrets.choice(alphabet) for _ in range(16))
+        challenge_bytes = challenge_string.encode('utf-8')
+        base64_string = base64.b64encode(challenge_bytes).decode('utf-8')
+
+        await redis_client.setex(
+            name=base64_string,
+            time=900,
+            value=''
+        )
+
+        return base64_string
+
+    async def ncalayer_verify(self, data: NcalayerVerifyRequest) -> tuple[Tokens, UserResponse]:
+        redis_data = await redis_client.get(data.original_data)
+
+        if redis_data is None:
+            raise HTTPException(status_code=400, detail="Challenge expired")
+
+        await redis_client.delete(data.original_data)
+
+        user_ecp_info = NCANode().cms_verify(data.signed_data, data.original_data)
+
+        if not user_ecp_info:
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+        user_model = await self._authenticate_by_ecp(user_ecp_info)
+        tokens = self._create_tokens(user_model)
+
+        firstname = user_ecp_info.firstname
+        lastname = user_ecp_info.lastname
+        patronymic = user_ecp_info.patronymic
+
+        result_user = UserResponse(
+            id=user_model.id,
+            firstname=firstname,
+            lastname=lastname,
+            patronymic=patronymic,
+        )
+
+        return tokens, result_user
 
     @classmethod
     async def refresh_access_token(cls, refresh_token: str):
@@ -145,3 +194,33 @@ class AuthService:
             new_access_token = cls._create_access_token(user)
 
             return new_access_token
+
+    async def platonus_login(self, data: PlatonusLoginRequest):
+        if not data.login.strip() or not data.password.strip():
+            raise HTTPException(status_code=400, detail="Login or password is empty")
+
+        user_model = await self._authenticate_by_platonus(data.login, data.password)
+
+        if user_model is None:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        tokens = self._create_tokens(user_model)
+
+        async with get_mysql_session() as mysql_session:
+            if user_model.is_student:
+                platonus_user = await StudentDAO(mysql_session).get_one_or_none(StudentID=user_model.platonus_id)
+            else:
+                platonus_user = await TutorDAO(mysql_session).get_one_or_none(TutorID=user_model.platonus_id)
+
+            firstname = platonus_user.firstname
+            lastname = platonus_user.lastname
+            patronymic = platonus_user.patronymic
+
+        result_user = UserResponse(
+            id=user_model.id,
+            firstname=firstname,
+            lastname=lastname,
+            patronymic=patronymic,
+        )
+
+        return tokens, result_user
