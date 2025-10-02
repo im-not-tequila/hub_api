@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List, Optional
-from datetime import date
+from datetime import datetime
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -14,34 +14,66 @@ class DocumentUploadRequest(BaseModel):
 
 
 class DocumentStatus(str, Enum):
-    SIGNED = 'Утвержден'
-    REJECTED = 'Отклонен'
-    PENDING = 'На согласовании'
+    PENDING = "pending"
+    SIGNED = "signed"
+    REJECTED = "cancelled"
+
+    NOT_APPROVED_BY_YOU = 'Вы не согласовали'
+    APPROVED_BY_YOU = 'Вы согласовали'
+    NOT_SIGNED_BY_YOU = 'Вы не подписали'
+    SIGNED_BY_YOU = 'Вы подписали'
+    REJECTED_BY_YOU = 'Вы отклонили'
+    NOT_EXECUTED_BY_YOU = 'Вы не исполнили'
+    EXECUTED_BY_YOU = 'Вы исполнили'
 
 
 class Person(BaseModel):
-    name: str
+    id: int
+    firstname: str
+    lastname: str
+    patronymic: Optional[str] = None
+    shortname: str = Field(default="")
     role: Optional[str] = None
     avatar: Optional[HttpUrl] = None
     status: Optional[DocumentStatus] = None
 
+    def model_post_init(self, __context) -> None:
+        """Форматируем строковые поля и автоматически формируем shortname"""
 
-class AgreementItem(Person):
+        # Приводим фамилию, имя, отчество в формат "Первая буква заглавная, остальные строчные"
+        if self.firstname:
+            self.firstname = self.firstname.strip().capitalize()
+        if self.lastname:
+            self.lastname = self.lastname.strip().capitalize()
+        if self.patronymic:
+            self.patronymic = self.patronymic.strip().capitalize()
+
+        # Формируем инициалы
+        first_initial = f"{self.firstname[0].upper()}." if self.firstname else ""
+        patronymic_initial = f" {self.patronymic[0].upper()}." if self.patronymic else ""
+
+        # Генерируем shortname
+        self.shortname = f"{self.lastname} {first_initial}{patronymic_initial}".strip()
+
+
+class ApproverPerson(Person):
     """Если структура соглашения полностью совпадает с Person, можно унаследовать."""
     pass
 
 
-class DocumentResponse(BaseModel):
+class OutgoingResponse(BaseModel):
     id: int
     name: str
     sender: Person
     recipient: Person
-    agreement: List[AgreementItem] = Field(default_factory=list)
-    date: date
+    approvers: List[ApproverPerson] = Field(default_factory=list)
+    type: str
+    type_id: int
+    create_datetime: datetime
     status: DocumentStatus
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "id": 1,
                 "name": "Акт приема-передачи",
@@ -74,3 +106,33 @@ class DocumentResponse(BaseModel):
                 "status": "На согласовании"
             }
         }
+
+
+class IncomingResponse(OutgoingResponse):
+    pass
+
+
+class DocumentType(BaseModel):
+    id: int
+    name: str
+
+
+class DocumentCategory(DocumentType):
+    pass
+
+
+class DocumentTypesAndCategory(BaseModel):
+    category: DocumentCategory
+    document_types: List[DocumentType] = Field(default_factory=list)
+
+
+class DocumentSignRequest(BaseModel):
+    document_id: int
+    resolution: str | None
+    executors: List[int]
+    cms: str
+
+
+class DocumentExecuteRequest(BaseModel):
+    document_id: int
+

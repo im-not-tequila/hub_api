@@ -23,7 +23,22 @@ class BaseDAO(Generic[ModelType]):
 
         return result.scalars().all()
 
-    async def get_one_or_none(self, **filter_by):
+    async def get_all_filtered(self, filters: dict = None, limit: int = 100, offset: int = 0):
+        stmt = select(self.model)
+
+        if filters:
+            for field, values in filters.items():
+                if isinstance(values, list):
+                    stmt = stmt.where(field.in_(values))
+                else:
+                    stmt = stmt.where(field == values)
+
+        stmt = stmt.limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+
+        return result.scalars().all()
+
+    async def get_one_or_none(self, **filter_by) -> ModelType | None:
         """
         Асинхронно находит и возвращает один экземпляр модели по указанным критериям или None.
 
@@ -67,6 +82,53 @@ class PostgresDao(BaseDAO):
         await self.session.refresh(new_instance)
 
         return new_instance
+
+    async def bulk_add(self, objects_data: list[dict]):
+        """
+        Асинхронно добавляет несколько записей в таблицу за один коммит.
+
+        Аргументы:
+            objects_data: Список словарей, где каждый словарь — поля для одной записи.
+
+        Возвращает:
+            Список созданных экземпляров модели.
+        """
+        new_instances = [self.model(**data) for data in objects_data]
+
+        self.session.add_all(new_instances)
+        await self.session.commit()
+
+        # Обновим экземпляры, чтобы получить ID и server_default
+        for instance in new_instances:
+            await self.session.refresh(instance)
+
+        return new_instances
+
+    async def update(self, obj_id: int, **values):
+        """
+        Асинхронно обновляет существующий экземпляр модели по его ID.
+
+        Аргументы:
+            obj_id: ID объекта, который нужно обновить.
+            **values: Именованные параметры для обновления полей модели.
+
+        Возвращает:
+            Обновленный экземпляр модели или None, если объект не найден.
+        """
+        stmt = select(self.model).where(self.model.id == obj_id)
+        result = await self.session.execute(stmt)
+        instance = result.scalar_one_or_none()
+
+        if not instance:
+            return None
+
+        for key, value in values.items():
+            setattr(instance, key, value)
+
+        await self.session.commit()
+        await self.session.refresh(instance)
+
+        return instance
 
     async def bulk_add(self, objects_data: list[dict]):
         """

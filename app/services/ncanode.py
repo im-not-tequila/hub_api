@@ -22,9 +22,10 @@ class NCANode:
 
         return data['data']
 
-    def cms_verify(self, cms: str, original_data: str) -> UserEcpInfo | None:
-        if self.cms_extract(cms) != original_data:
-            return None
+    def cms_verify(self, cms: str, original_data: str = None) -> UserEcpInfo | None:
+        # if original_data:
+        #     if self.cms_extract(cms) != original_data:
+        #         return None
 
         url = f'{NCANode.NCANODE_URL}/cms/verify'
 
@@ -33,14 +34,17 @@ class NCANode:
                 'OCSP'
             ],
             'cms': cms,
-            'data': ''
+            'data': original_data
         }
 
         response = requests.post(url, json=payload)
         data = response.json()
 
         signers = data.get('signers', None)
-        signers = None if len(signers) == 0 else signers
+
+        if signers:
+            signers = None if len(signers) == 0 else signers
+
         is_valid = data.get('valid', False)
 
         if response.status_code != 200 or signers is None or not is_valid:

@@ -1,14 +1,19 @@
-from sqlalchemy import Integer, Text, DateTime, func, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Integer, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.postgres_connection import PostgresBase
 from app.models.postgres import User
+from .timestamp_mixin import TimestampMixin
 
 
-class UserInfo(PostgresBase):
+class UserInfo(PostgresBase, TimestampMixin):
     __tablename__ = 'users_info'
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True
+    )
+
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey('users.id', ondelete='CASCADE'),
@@ -17,22 +22,25 @@ class UserInfo(PostgresBase):
         index=True
     )
 
-    lastname: Mapped[str] = mapped_column(Text, nullable=True)
-    firstname: Mapped[str] = mapped_column(Text, nullable=True)
-    patronymic: Mapped[str] = mapped_column(Text, nullable=True)
-    iin_number: Mapped[str] = mapped_column(Text, nullable=False)
-
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
+    lastname: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True
     )
 
-    updated_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
+    firstname: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    patronymic: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    iin_number: Mapped[str] = mapped_column(
+        String(12),
+        nullable=False,
+        index=True
     )
 
     user: Mapped["User"] = relationship(
@@ -41,4 +49,10 @@ class UserInfo(PostgresBase):
         lazy="selectin",
         passive_deletes=True
     )
+
+    @validates('iin_number')
+    def validate_iin(self, key, value):
+        if len(value) != 12 or not value.isdigit():
+            raise ValueError("IIN must be exactly 12 digits")
+        return value
 

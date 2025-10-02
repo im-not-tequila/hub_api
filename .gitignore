@@ -82,3 +82,4 @@ docker-compose.override.yml
 app/models/mysql/generated_models.py
 test.py
 storage/
+migrations/versions

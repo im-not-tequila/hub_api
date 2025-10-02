@@ -4,7 +4,7 @@ import decimal
 
 from sqlalchemy import BigInteger, Date, Double, Index, Integer, SmallInteger, String, TIMESTAMP, Text, text
 from sqlalchemy.dialects.mysql import MEDIUMBLOB, MEDIUMTEXT, TINYINT
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.mysql_connection import MySQLBase
 
@@ -31,7 +31,8 @@ class Tutor(MySQLBase):
     )
 
     TutorID: Mapped[int] = mapped_column(Integer, primary_key=True)
-    update_date: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
+    update_date: Mapped[datetime.datetime] = mapped_column(TIMESTAMP, nullable=False,
+                                                           server_default=text('CURRENT_TIMESTAMP'))
     sovmestid: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("'0'"))
     telegramid: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("'0'"))
     del_: Mapped[int] = mapped_column('del', TINYINT, nullable=False, server_default=text("'0'"))
@@ -129,9 +130,11 @@ class Tutor(MySQLBase):
     passwordLdapAd: Mapped[Optional[str]] = mapped_column(String(256), comment='Active directory')
     flanguage_skill_lang: Mapped[Optional[int]] = mapped_column(Integer, comment='владения иностранным языком')
     flanguage_skill_level: Mapped[Optional[int]] = mapped_column(Integer, comment='Уровень владения по ОЕК')
-    ic_finish_date: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Срок действия документа, удостоверяющего личность')
+    ic_finish_date: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                    comment='Срок действия документа, удостоверяющего личность')
     incorrectIin: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"), comment='Неверный ИИН')
-    assignedIinIssuedByPublicBody: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"), comment='Заданный ИИН выдан государственным органом')
+    assignedIinIssuedByPublicBody: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"),
+                                                                         comment='Заданный ИИН выдан государственным органом')
     tablelnumber: Mapped[Optional[str]] = mapped_column(String(9), server_default=text("'000000000'"))
     birthplace: Mapped[Optional[str]] = mapped_column(String(512))
     other_birth_place: Mapped[Optional[str]] = mapped_column(String(512))
@@ -147,15 +150,18 @@ class Tutor(MySQLBase):
     du: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"))
     birth_place_cato_id: Mapped[Optional[int]] = mapped_column(Integer, comment='Населенный пункт рождения (като)')
     contractTypeId: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'1'"))
-    registration_place_cato_id: Mapped[Optional[int]] = mapped_column(Integer, comment='Населенный пункт прописки (като)')
+    registration_place_cato_id: Mapped[Optional[int]] = mapped_column(Integer,
+                                                                      comment='Населенный пункт прописки (като)')
     living_place_cato_id: Mapped[Optional[int]] = mapped_column(Integer, comment='Населенный пункт проживания (като)')
     categoryid: Mapped[Optional[int]] = mapped_column(Integer)
     hasCriminalRecord: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"))
     hasMedicalRecord: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"))
     is_hired_instead: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"))
     replaced_tutor_id: Mapped[Optional[int]] = mapped_column(Integer)
-    educationOrderNumber: Mapped[Optional[str]] = mapped_column(String(256), comment='номер приказа в подразделении - сведения об образовании')
-    educationOrderDate: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='дата приказа в подразделении - сведения об образовании')
+    educationOrderNumber: Mapped[Optional[str]] = mapped_column(String(256),
+                                                                comment='номер приказа в подразделении - сведения об образовании')
+    educationOrderDate: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                        comment='дата приказа в подразделении - сведения об образовании')
     bankRequisites: Mapped[Optional[str]] = mapped_column(String(64), comment='Банковские реквизиты')
     provided_with_housing: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"))
     room_count: Mapped[Optional[int]] = mapped_column(Integer)
@@ -164,13 +170,20 @@ class Tutor(MySQLBase):
     period_of_staying_end_date: Mapped[Optional[datetime.date]] = mapped_column(Date)
     viceRector: Mapped[Optional[str]] = mapped_column(String(1))
     liveRegType: Mapped[Optional[int]] = mapped_column(Integer, comment='Тип регистрации проживания')
-    livingPeriodStart: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Уведомление о прибытии иностранного гражданина - Период пребывания старт')
-    livingPeriodEnd: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Уведомление о прибытии иностранного гражданина - Период пребывания конец')
-    allowanceNumber: Mapped[Optional[str]] = mapped_column(String(256), comment='Разрешение на временное проживание - Номер разрешения')
-    allowanceDateStart: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Разрешение на временное проживание - Дата начала разрешения')
-    allowanceDateEnd: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Разрешение на временное проживание - Дата окончания разрешения')
-    employee_type: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"), comment='Тип сотрудника. «Сотрудник» (по умолчанию) или «Научный консультант»')
-    scientific_consultant_type: Mapped[Optional[int]] = mapped_column(Integer, comment='Тип научного консультанта если сотрудник является Научный консультантом по полю employee_type')
+    livingPeriodStart: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                       comment='Уведомление о прибытии иностранного гражданина - Период пребывания старт')
+    livingPeriodEnd: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                     comment='Уведомление о прибытии иностранного гражданина - Период пребывания конец')
+    allowanceNumber: Mapped[Optional[str]] = mapped_column(String(256),
+                                                           comment='Разрешение на временное проживание - Номер разрешения')
+    allowanceDateStart: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                        comment='Разрешение на временное проживание - Дата начала разрешения')
+    allowanceDateEnd: Mapped[Optional[datetime.date]] = mapped_column(Date,
+                                                                      comment='Разрешение на временное проживание - Дата окончания разрешения')
+    employee_type: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"),
+                                                         comment='Тип сотрудника. «Сотрудник» (по умолчанию) или «Научный консультант»')
+    scientific_consultant_type: Mapped[Optional[int]] = mapped_column(Integer,
+                                                                      comment='Тип научного консультанта если сотрудник является Научный консультантом по полю employee_type')
     by_agreement: Mapped[Optional[int]] = mapped_column(TINYINT(1), comment='По договору')
     contract_start_date: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Срок действия договора c')
     contract_finish_date: Mapped[Optional[datetime.date]] = mapped_column(Date, comment='Срок действия договора по')
@@ -178,17 +191,30 @@ class Tutor(MySQLBase):
     country_of_arrival: Mapped[Optional[int]] = mapped_column(Integer, comment='Страна прибытия')
     name_of_hpeo: Mapped[Optional[str]] = mapped_column(String(256), comment='Наименование ОВПО')
     source_of_finance: Mapped[Optional[int]] = mapped_column(Integer, comment='Источник финансирования')
-    master_class_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"), comment='Количество проведенных мастер-классов, часы')
-    trainings_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"), comment='Количество проведенных мастер-классов, часы')
-    was_speaker_on_conferences: Mapped[Optional[int]] = mapped_column(Integer, comment='Участие в качестве спикера на различных круглых столах, конференциях и встречах')
-    developed_working_programs: Mapped[Optional[int]] = mapped_column(Integer, comment='Разработка рабочих программ дисциплин и сопровождающих учебно-методических материалов')
+    master_class_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"),
+                                                                   comment='Количество проведенных мастер-классов, часы')
+    trainings_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"),
+                                                                comment='Количество проведенных мастер-классов, часы')
+    was_speaker_on_conferences: Mapped[Optional[int]] = mapped_column(Integer,
+                                                                      comment='Участие в качестве спикера на различных круглых столах, конференциях и встречах')
+    developed_working_programs: Mapped[Optional[int]] = mapped_column(Integer,
+                                                                      comment='Разработка рабочих программ дисциплин и сопровождающих учебно-методических материалов')
     format_of_work: Mapped[Optional[int]] = mapped_column(Integer, comment='Формат')
-    workplace_orgname_ru: Mapped[Optional[str]] = mapped_column(Text, comment='Наименование основного места работы на русском языке')
-    workplace_orgname_kz: Mapped[Optional[str]] = mapped_column(Text, comment='Наименование основного места работы на казахском языке')
-    workplace_orgname_en: Mapped[Optional[str]] = mapped_column(Text, comment='Наименование основного места работы на английском языке')
-    lectures_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"), comment='Количество проведенных лекций, часы')
-    seminars_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"), comment='Количество проведенных семинаров, часы')
+    workplace_orgname_ru: Mapped[Optional[str]] = mapped_column(Text,
+                                                                comment='Наименование основного места работы на русском языке')
+    workplace_orgname_kz: Mapped[Optional[str]] = mapped_column(Text,
+                                                                comment='Наименование основного места работы на казахском языке')
+    workplace_orgname_en: Mapped[Optional[str]] = mapped_column(Text,
+                                                                comment='Наименование основного места работы на английском языке')
+    lectures_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"),
+                                                               comment='Количество проведенных лекций, часы')
+    seminars_made_hours: Mapped[Optional[int]] = mapped_column(Integer, server_default=text("'0'"),
+                                                               comment='Количество проведенных семинаров, часы')
     scopusID: Mapped[Optional[str]] = mapped_column(String(256))
     webOfScienceID: Mapped[Optional[str]] = mapped_column(String(256))
     mobile_phone_code: Mapped[Optional[str]] = mapped_column(Text)
     remove_from_the_list_epvo: Mapped[Optional[int]] = mapped_column(TINYINT(1), server_default=text("'0'"))
+    attractedTutorId: Mapped[Optional[int]] = mapped_column(Integer, comment='Привлёк в ОВПО преподаватель')
+    attractedYear: Mapped[Optional[int]] = mapped_column(Integer, comment='Привлёк в ОВПО преподаватель')
+
+    tutor_cafedra: Mapped[list['TutorCafedra']] = relationship('TutorCafedra', back_populates='tutors')

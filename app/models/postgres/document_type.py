@@ -1,15 +1,28 @@
-from sqlalchemy import Integer, Text, Boolean, DateTime, func, ForeignKey
+from sqlalchemy import Integer, Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.postgres_connection import PostgresBase
+from .timestamp_mixin import TimestampMixin
 
 
-class DocumentType(PostgresBase):
+class DocumentType(PostgresBase, TimestampMixin):
     __tablename__ = 'document_types'
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name_ru: Mapped[str] = mapped_column(Text, nullable=False)
-    name_kz: Mapped[str] = mapped_column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True
+    )
+
+    name_ru: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False
+    )
+
+    name_kz: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False
+    )
 
     document_type_group_id: Mapped[int] = mapped_column(
         Integer,
@@ -19,19 +32,18 @@ class DocumentType(PostgresBase):
         index=True
     )
 
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
-
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
+    document_type_group = relationship(
+        "DocumentTypeGroup",
+        backref="document_types_group",
+        lazy="joined"
     )
 
-    updated_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True
     )
 
+    def __str__(self):
+        return f"{self.id} - {self.name_ru}"
 

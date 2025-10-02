@@ -8,8 +8,9 @@ from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError
 
 from app.core.settings import get_settings
+from app.dao.migrate_user import MigrateUserMysqlToPostgres
 from app.dao.mysql import StudentDAO, TutorDAO
-from app.dao.postgres import UserDAO, UserInfoDAO
+from app.dao.postgres import UserDAO, UserInfoDAO, RoleDao
 from app.models.postgres import User as UserModel
 from app.db.session import get_postgres_session, get_mysql_session, redis_client
 from app.schemas import NcalayerVerifyRequest, UserEcpInfo, Tokens, UserResponse, PlatonusLoginRequest
@@ -24,32 +25,35 @@ class AuthService:
     async def _authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> UserModel:
         async with get_postgres_session() as postgres_session:
             async with get_mysql_session() as mysql_session:
-                tutor_dao = TutorDAO(mysql_session)
-                user_dao = UserDAO(postgres_session)
-                tutor = await tutor_dao.get_by_iin(user_ecp_info.iin_number)
                 user = None
+                tutor_dao = TutorDAO(mysql_session)
+                tutor = await tutor_dao.get_by_iin(user_ecp_info.iin_number)
 
                 if tutor:
-                    user = await user_dao.get_one_or_none(platonus_id=tutor.TutorID)
+                    user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
+                        tutor_id=tutor.TutorID,
+                        bin_number=user_ecp_info.bin_number
+                    )
+                else:
+                    student_dao = StudentDAO(mysql_session)
+                    student = await student_dao.get_by_iin(user_ecp_info.iin_number, is_student=[1, 3])
 
-                    if user is None:
-                        user = await user_dao.add(platonus_id=tutor.TutorID, is_student=False)
-
-                if user:
-                    return user
-
-                student_dao = StudentDAO(mysql_session)
-                student = await student_dao.get_by_iin(user_ecp_info.iin_number, is_student=[1, 3])
-
-                if student:
-                    user = await user_dao.get_one_or_none(platonus_id=student.StudentID)
-
-                    if user is None:
-                        user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
+                    if student:
+                        user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_student_id(
+                            student_id=student.StudentID
+                        )
 
                 if user is None:
+                    roles = await RoleDao(postgres_session).get_roles_by_ids([11])
+                    user_dao = UserDAO(postgres_session)
                     user_info_dao = UserInfoDAO(postgres_session)
-                    user = await user_dao.add(platonus_id=None, is_student=False)
+
+                    user = await user_dao.add(
+                        platonus_id=None,
+                        is_student=False,
+                        roles=roles
+                    )
+
                     await user_info_dao.add(
                         user_id=user.id,
                         lastname=user_ecp_info.lastname,
@@ -70,22 +74,20 @@ class AuthService:
                 user = None
 
                 if tutor:
-                    user = await user_dao.get_one_or_none(platonus_id=tutor.TutorID)
+                    user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
+                        tutor_id=tutor.TutorID
+                    )
+                else:
+                    student_dao = StudentDAO(mysql_session)
+                    student = await student_dao.get_by_platonus_credentials(login, password)
 
-                    if user is None:
-                        user = await user_dao.add(platonus_id=tutor.TutorID, is_student=False)
+                    if student:
+                        user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_student_id(
+                            student_id=student.StudentID
+                        )
 
-                if user:
-                    return user
-
-                student_dao = StudentDAO(mysql_session)
-                student = await student_dao.get_by_platonus_credentials(login, password)
-
-                if student:
-                    user = await user_dao.get_one_or_none(platonus_id=student.StudentID)
-
-                    if user is None:
-                        user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
+                # if user is None:
+                #     user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
 
                 return user
 

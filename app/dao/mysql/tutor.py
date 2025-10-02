@@ -1,9 +1,11 @@
 import hashlib
 
+from typing import cast
+
 from app.dao.base import MySQLDao
-from app.models.mysql.tutor import Tutor
+from app.models.mysql import Tutor, TutorCafedra, Cafedra, TutorPositions, Faculty
 from app.models.mysql.structural_subdivision import StructuralSubdivision
-from sqlalchemy import select, or_
+from sqlalchemy import select
 
 
 class TutorDAO(MySQLDao):
@@ -26,25 +28,71 @@ class TutorDAO(MySQLDao):
 
         return result.scalar_one_or_none()
 
-    async def get_tutors_and_position(self):
+    async def get_tutors_and_position(
+            self, filters: dict = None
+    ) -> list[tuple[Tutor, StructuralSubdivision]]:
         stmt = (
             select(
-                Tutor.TutorID,
-                Tutor.lastname,
-                Tutor.firstname,
-                Tutor.patronymic,
-                StructuralSubdivision.nameru,
-                StructuralSubdivision.namekz,
-                StructuralSubdivision.nameen,
+                Tutor,
+                StructuralSubdivision,
             )
             .join(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
-            .where(
+        )
 
-                StructuralSubdivision.subdivision_type.in_([0, 1, 2, 3])
+        if filters:
+            for field, values in filters.items():
+                if isinstance(values, list):
+                    stmt = stmt.where(field.in_(values))
+                else:
+                    stmt = stmt.where(field == values)
+
+        result = await self.session.execute(stmt)
+
+        rows = cast(list[tuple[Tutor, StructuralSubdivision]], result.tuples().all())
+
+        return rows
+
+    async def get_tutor_positions_pps(self, tutor_id: int, lang: str = "RU"):
+        name_column = getattr(TutorPositions, f"Name{lang}")
+
+        stmt = (
+            select(
+                TutorCafedra.type,
+                Cafedra.cafedraID,
+                Cafedra.FacultyID,
+                name_column.label("position_name")
+            )
+            .join(Tutor, TutorCafedra.tutorID == Tutor.TutorID)
+            .join(Cafedra, TutorCafedra.cafedraid == Cafedra.cafedraID)
+            .join(TutorPositions, TutorPositions.ID == TutorCafedra.position)
+            .where(
+                Tutor.TutorID == tutor_id,
+                TutorCafedra.deleted == 0,
+                Tutor.deleted == 0
+            )
+            .order_by(TutorCafedra.type)
+        )
+
+        result = await self.session.execute(stmt)
+
+        return result.mappings().all()  # вернем как список словарей
+
+    async def get_faculty_and_cafedra_managers(self, tutor_id: int):
+        stmt = (
+            select(
+                Cafedra.cafedraManager,
+                Faculty.facultyDean
+            )
+            .join(Tutor, TutorCafedra.tutorID == Tutor.TutorID)
+            .join(Cafedra, TutorCafedra.cafedraid == Cafedra.cafedraID)
+            .join(Faculty, Faculty.FacultyID == Cafedra.FacultyID)
+            .where(
+                Tutor.TutorID == tutor_id,
+                TutorCafedra.deleted == 0
             )
         )
 
         result = await self.session.execute(stmt)
-        rows = result.mappings().all()
 
-        return rows
+        return result.mappings().all()
+
