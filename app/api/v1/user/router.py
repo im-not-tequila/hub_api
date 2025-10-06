@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from typing import List
 
 from app.models.postgres import User as UserModel
@@ -6,7 +6,7 @@ from app.models.mysql import Tutor as TutorModel, StructuralSubdivision as Struc
 from app.api.v1.auth.deps import get_current_user
 from app.schemas import UserResponse
 from app.dao.mysql import StudentDAO, TutorDAO
-from app.dao.postgres import UserInfoDAO
+from app.dao.postgres import UserInfoDAO, UserDAO
 from app.db.session import get_mysql_session, get_postgres_session
 from .schemas import TutorWithPosition
 
@@ -80,3 +80,22 @@ async def get_all_tutors_with_position(
         ]
 
         return response
+
+
+@router.get(
+    path="/{user_id}/avatar"
+)
+async def avatar(
+    user_id: int,
+    current_user: UserModel = Depends(get_current_user)
+):
+    async with get_postgres_session() as postgres_session:
+        user = await UserDAO(postgres_session).get_by_id(user_id)
+
+    async with get_mysql_session() as mysql_session:
+        tutor = await TutorDAO(mysql_session).get_one_or_none(TutorID=user.platonus_id)
+
+    if not tutor.photo or tutor.photo == b"0":
+        return Response(status_code=404)
+
+    return Response(content=tutor.photo, media_type="image/jpeg")

@@ -12,6 +12,7 @@ from app.dao.migrate_user import MigrateUserMysqlToPostgres
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserDAO, UserInfoDAO, RoleDao
 from app.models.postgres import User as UserModel
+from app.models.mysql import Tutor as TutorModel, Student as StudentModel
 from app.db.session import get_postgres_session, get_mysql_session, redis_client
 from app.schemas import NcalayerVerifyRequest, UserEcpInfo, Tokens, UserResponse, PlatonusLoginRequest
 from app.services.ncanode import NCANode
@@ -27,7 +28,10 @@ class AuthService:
             async with get_mysql_session() as mysql_session:
                 user = None
                 tutor_dao = TutorDAO(mysql_session)
-                tutor = await tutor_dao.get_by_iin(user_ecp_info.iin_number)
+                tutor = await tutor_dao.get_by_iin(
+                    iin=user_ecp_info.iin_number,
+                    fields=[TutorModel.TutorID]
+                )
 
                 if tutor:
                     user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
@@ -36,7 +40,11 @@ class AuthService:
                     )
                 else:
                     student_dao = StudentDAO(mysql_session)
-                    student = await student_dao.get_by_iin(user_ecp_info.iin_number, is_student=[1, 3])
+                    student = await student_dao.get_by_iin(
+                        iin=user_ecp_info.iin_number,
+                        is_student=[1, 3],
+                        fields=[StudentModel.StudentID]
+                    )
 
                     if student:
                         user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_student_id(

@@ -12,15 +12,27 @@ from app.core.settings import get_settings
 from app.db.session import get_postgres_session, get_mysql_session
 from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO
 from app.services.sigex import Sigex
-from app.schemas import DocumentUploadRequest, DocumentTypesAndCategory, DocumentCategory, DocumentType, OutgoingResponse, Person, ApproverPerson, DocumentStatus
+
+from app.schemas import (
+    DocumentUploadRequest,
+    DocumentTypesAndCategory,
+    DocumentCategory,
+    DocumentType,
+    OutgoingResponse,
+    Person,
+    ApproverPerson
+)
+
 from app.models.postgres import (
     User as UserModel,
     Approver as ApproverModel,
     Document as DocumentModel,
     Executor as ExecutorModel,
+    DocumentStatus,
     ApproverStatus,
     ExecutorStatus
 )
+
 from app.models.mysql import Tutor as TutorModel
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 
@@ -61,11 +73,14 @@ class DocumentService:
                     sigex_id=sigex_data['sigex_document_id']
                 )
 
-                await ApproverDAO(postgres_session).add(
+                await ApproverDAO(postgres_session).add_if_not_exists(
                     document_id=document.id,
                     approver_id=recipient_user.id,
                     is_recipient=True
                 )
+
+                await postgres_session.refresh(document, attribute_names=["author_user"])
+                author_platonus_id = document.author_user.platonus_id
 
         platonus_id = current_user.platonus_id if current_user.platonus_id else "no_platonus_id"
 
@@ -73,7 +88,7 @@ class DocumentService:
                               / "docs"
                               / datetime.now().strftime("%Y")
                               / str(document.document_type_id)
-                              / str(document.author_user.platonus_id)
+                              / str(author_platonus_id)
                               / str(document.id)
                               )
 
@@ -95,9 +110,9 @@ class DocumentService:
                         tutor_id=approver_id
                     )
 
-                    await ApproverDAO(postgres_session).add(
+                    await ApproverDAO(postgres_session).add_if_not_exists(
                         document_id=document.id,
-                        approver_id=recipient_user.id,
+                        approver_id=int(recipient_user.id),
                         is_recipient=False
                     )
 
@@ -184,6 +199,7 @@ class DocumentService:
             else:
                 sender = await TutorDAO(mysql_session).get_one_or_none(TutorID=document.author_user.platonus_id)
                 sender_position = 'Сотрудник университета'
+
                 all_tutors_and_position = await TutorDAO(mysql_session).get_tutors_and_position(
                     filters={
                         TutorModel.TutorID: document.author_user.platonus_id,
@@ -212,20 +228,14 @@ class DocumentService:
                 is_recipient=True
             )
 
-            if document.recipient_id == current_user.id:
-                if recipient_approver.status == ApproverStatus.REJECTED:
-                    status = DocumentStatus.REJECTED_BY_YOU
-                elif recipient_approver.status == ApproverStatus.SIGNED:
-                    status = DocumentStatus.SIGNED_BY_YOU
-                else:
-                    status = DocumentStatus.NOT_SIGNED_BY_YOU
+            if recipient_approver is None:
+                status = DocumentStatus.PENDING
+            elif recipient_approver.status == ApproverStatus.REJECTED:
+                status = DocumentStatus.REJECTED
+            elif recipient_approver.status == ApproverStatus.SIGNED:
+                status = DocumentStatus.SIGNED
             else:
-                if recipient_approver.status == ApproverStatus.REJECTED:
-                    status = DocumentStatus.REJECTED
-                elif recipient_approver.status == ApproverStatus.SIGNED:
-                    status = DocumentStatus.SIGNED
-                else:
-                    status = DocumentStatus.PENDING
+                status = DocumentStatus.PENDING
 
         recipient = {
             'platonus_user': tutors_dict.get(document.recipient_user.platonus_id),
@@ -246,19 +256,11 @@ class DocumentService:
                 }
             )
 
-            is_cancelled = False
-            is_all_signed = True
             approvers_response = []
 
             for approver in approvers:
                 approver_user = tutors_dict.get(approver.approver_user.platonus_id)
                 approver_position = subdivision_dict.get(approver.approver_user.platonus_id)
-
-                if approver.status != ApproverStatus.SIGNED:
-                    is_all_signed = False
-
-                if approver.status == ApproverStatus.REJECTED:
-                    is_cancelled = True
 
                 approver_response = ApproverPerson(
                     id=approver.approver_user.id,
@@ -272,7 +274,7 @@ class DocumentService:
 
                 approvers_response.append(approver_response)
 
-            return approvers_response, is_cancelled, is_all_signed
+            return approvers_response
 
     async def collect_user_documents(self, current_user: UserModel, category: str):
         async with get_postgres_session() as postgres_session:
@@ -291,29 +293,7 @@ class DocumentService:
             for document in documents:
                 sender = await self._collect_sender_by_document(document)
                 recipient = await self._collect_recipient(document, current_user, tutors_dict, subdivision_dict)
-                approvers_response, is_cancelled, is_all_signed = await self._collect_approvers_by_document(document, tutors_dict, subdivision_dict)
-
-                if category == 'incoming':
-                    document_status = recipient['status']
-                elif category == 'outgoing':
-                    if is_cancelled or recipient['status'] == DocumentStatus.REJECTED:
-                        document_status = DocumentStatus.REJECTED
-                    elif is_all_signed and recipient['status'] == DocumentStatus.SIGNED:
-                        document_status = DocumentStatus.SIGNED
-                    else:
-                        document_status = DocumentStatus.PENDING
-                else:
-                    executor: ExecutorModel = await ExecutorDAO(postgres_session).get_one_or_none(
-                        document_id=document.id,
-                        executor_id=current_user.id
-                    )
-
-                    if executor:
-                        if executor.status == ExecutorStatus.PENDING_EXECUTION:
-                            document_status = DocumentStatus.NOT_EXECUTED_BY_YOU
-                        else:
-                            document_status = DocumentStatus.EXECUTED_BY_YOU
-
+                approvers_response = await self._collect_approvers_by_document(document, tutors_dict, subdivision_dict)
 
                 sender_response = Person(
                     id=document.author_id,
@@ -345,7 +325,7 @@ class DocumentService:
                         type=document.document_type.name_ru,
                         type_id=document.document_type_id,
                         create_datetime=document.created_at,
-                        status=document_status
+                        status=document.status
                     )
                 )
 
@@ -449,12 +429,56 @@ class DocumentService:
                             executor_id=executor_user.id,
                         )
 
+            approvers = await ApproverDAO(postgres_session).get_all_filtered(
+                filters={
+                    ApproverModel.document_id: document_id,
+                }
+            )
+
+            is_all_signed = True
+
+            for approver in approvers:
+                if approver.status != ApproverStatus.SIGNED:
+                    is_all_signed = False
+                    break
+
+            if is_all_signed:
+                executors = await ExecutorDAO(postgres_session).get_all_filtered(
+                    filters={
+                        ExecutorModel.document_id: document_id,
+                    }
+                )
+
+                if executors:
+                    await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.ON_EXECUTION)
+                else:
+                    await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.SIGNED)
+
         await self._save_signature_to_file(document, user.platonus_id, user_signature, False)
         await self._save_signature_to_file(document, user.platonus_id, sigex_signature, True)
 
     @staticmethod
+    async def cancel(document_id: int, approver_id: int):
+        async with get_postgres_session() as postgres_session:
+            approver = await ApproverDAO(postgres_session).set_status(
+                document_id=document_id,
+                approver_id=approver_id,
+                status=ApproverStatus.REJECTED
+            )
+
+            if approver is None:
+                raise HTTPException(status_code=404, detail="Approver not found")
+
+            await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.REJECTED)
+
+    @staticmethod
     async def execute(document_id: int, executor_id: int):
         async with get_postgres_session() as postgres_session:
+            document = await DocumentDAO(postgres_session).get_by_id(document_id)
+
+            if document.status != DocumentStatus.ON_EXECUTION:
+                raise HTTPException(status_code=400, detail="Document is not on execution")
+
             executor = await ExecutorDAO(postgres_session).set_status(
                 document_id=document_id,
                 executor_id=executor_id,
@@ -463,6 +487,23 @@ class DocumentService:
 
             if executor is None:
                 raise HTTPException(status_code=404, detail="Executor not found")
+
+            executors = await ExecutorDAO(postgres_session).get_all_filtered(
+                filters={
+                    ExecutorModel.document_id: document_id,
+                }
+            )
+
+            is_all_completed = True
+
+            for executor in executors:
+                if executor.status != ExecutorStatus.COMPLETED:
+                    is_all_completed = False
+                    break
+
+            if is_all_completed:
+                await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.EXECUTED)
+
 
     @staticmethod
     async def pdf(document_id: int):

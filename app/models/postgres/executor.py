@@ -1,8 +1,8 @@
 import enum
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Integer, DateTime, func, ForeignKey, Enum, UniqueConstraint
+from sqlalchemy import Integer, DateTime, func, ForeignKey, Enum, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.postgres_connection import PostgresBase
@@ -58,11 +58,10 @@ class Executor(PostgresBase, TimestampMixin):
         nullable=False
     )
 
-    completed_at: Mapped[datetime] = mapped_column(
+    status_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=True,
-        default=None
+        nullable=False
     )
 
     __table_args__ = (
@@ -70,3 +69,7 @@ class Executor(PostgresBase, TimestampMixin):
     )
 
 
+@event.listens_for(Executor.status, "set")
+def receive_set(target, value, oldvalue, initiator):
+    if value != oldvalue:
+        target.status_updated_at = datetime.now(timezone.utc)

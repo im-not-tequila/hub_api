@@ -1,6 +1,6 @@
-from sqlalchemy import update
+from sqlalchemy import update, select
 
-from datetime import datetime, UTC
+# from datetime import datetime, UTC
 
 from app.dao.base import PostgresDao
 from app.models.postgres import Approver, ApproverStatus
@@ -27,8 +27,7 @@ class ApproverDAO(PostgresDao):
                 Approver.approver_id == approver_id
             )
             .values(
-                status=status,
-                signed_at=datetime.now(UTC) if status == ApproverStatus.SIGNED else None
+                status=status
             )
             .returning(Approver)
         )
@@ -60,3 +59,24 @@ class ApproverDAO(PostgresDao):
         await self.session.commit()
 
         return result.scalar_one_or_none()
+
+    async def add_if_not_exists(self, document_id: int, approver_id: int, is_recipient: bool = False) -> Approver | None:
+        existing = await self.session.scalar(
+            select(Approver)
+            .where(
+                Approver.document_id == document_id,
+                Approver.approver_id == approver_id
+            )
+        )
+        if existing:
+            return existing  # уже есть
+        approver = Approver(
+            document_id=document_id,
+            approver_id=approver_id,
+            is_recipient=is_recipient
+        )
+
+        self.session.add(approver)
+        await self.session.commit()
+
+        return approver

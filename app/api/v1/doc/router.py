@@ -1,4 +1,5 @@
 import json
+import asyncio
 
 from fastapi import APIRouter, Depends, Response, UploadFile, File, status, Query, Form
 from fastapi.responses import FileResponse
@@ -7,7 +8,7 @@ from typing import List
 
 from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas import DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, DocumentExecuteRequest
+from app.schemas import DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, DocumentExecuteRequest, DocumentCancelRequest
 from app.services.document import DocumentService
 
 
@@ -23,6 +24,7 @@ async def incoming(
 ) -> List[OutgoingResponse]:
     return await DocumentService().collect_user_documents(current_user, 'incoming')
 
+
 @router.get(
     path="/outgoing",
     response_model=List[OutgoingResponse]
@@ -30,7 +32,9 @@ async def incoming(
 async def outgoing(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
+    # await asyncio.sleep(15)
     return await DocumentService().collect_user_documents(current_user, 'outgoing')
+
 
 @router.get(
     path="/pending_execution",
@@ -41,6 +45,7 @@ async def pending_execution(
 ) -> List[OutgoingResponse]:
     return await DocumentService().collect_user_documents(current_user, 'pending_execution')
 
+
 @router.get(
     path="/executed",
     response_model=List[OutgoingResponse]
@@ -49,6 +54,7 @@ async def executed(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
     return await DocumentService().collect_user_documents(current_user, 'executed')
+
 
 @router.get(
     path="/types_and_categories",
@@ -90,6 +96,7 @@ async def upload(
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
 @router.post(
     path="/sign",
 )
@@ -107,6 +114,22 @@ async def sign(
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
+@router.post(
+    path="/cancel"
+)
+async def cancel(
+        data: DocumentCancelRequest,
+        current_user: UserModel = Depends(get_current_user)
+):
+    await DocumentService().cancel(
+        document_id=data.document_id,
+        approver_id=current_user.id
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     path="/execute",
 )
@@ -120,6 +143,7 @@ async def execute(
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 @router.get(
     path="/pdf"

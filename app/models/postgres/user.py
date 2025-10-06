@@ -34,7 +34,8 @@ class User(PostgresBase, TimestampMixin):
     user_roles: Mapped[list["UserRole"]] = relationship(
         "UserRole",
         back_populates="user",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy = "selectin"
     )
 
     info: Mapped["UserInfo"] = relationship(

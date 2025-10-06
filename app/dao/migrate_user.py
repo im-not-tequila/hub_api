@@ -32,6 +32,8 @@ class MigrateUserMysqlToPostgres:
                     role_ids.append(9) # Отдел сопровождения развития персонала
                 elif position.id == 103:
                     role_ids.append(13) # Ректор
+                else:
+                    role_ids.append(14) # Руководитель структурных подразделений
 
         tutor_and_position_pps = await TutorDAO(self.mysql_session).get_tutor_positions_pps(
             tutor_id=tutor.TutorID,
@@ -82,7 +84,12 @@ class MigrateUserMysqlToPostgres:
         if user:
             return user
 
-        tutor: Tutor = await TutorDAO(self.mysql_session).get_one_or_none(TutorID=tutor_id, has_access=1, deleted=0)
+        tutor: Tutor = await TutorDAO(self.mysql_session).get_one_or_none(
+            TutorID=tutor_id,
+            has_access=1,
+            deleted=0,
+            fields=[Tutor.TutorID]
+        )
 
         if tutor:
             roles = await self._get_tutor_roles(tutor)
@@ -102,7 +109,10 @@ class MigrateUserMysqlToPostgres:
         if user:
             return user
 
-        student = await StudentDAO(self.mysql_session).get_one_or_none(StudentID=student_id)
+        student = await StudentDAO(self.mysql_session).get_one_or_none(
+            StudentID=student_id,
+            fields=[Student.StudentID, Student.isStudent]
+        )
 
         if student:
             roles = await self._get_student_roles(student)

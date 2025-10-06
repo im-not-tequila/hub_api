@@ -2,7 +2,7 @@ from .role import Role
 from .user import User
 from .user_info import UserInfo
 from .user_role import UserRole
-from .document import Document
+from .document import Document, DocumentStatus
 from .document_type import DocumentType
 from .document_type_group import DocumentTypeGroup
 from .approver import Approver, ApproverStatus
@@ -16,6 +16,7 @@ __all__ = [
     'UserInfo',
     'UserRole',
     'Document',
+    'DocumentStatus',
     'DocumentType',
     'DocumentTypeGroup',
     'Approver',

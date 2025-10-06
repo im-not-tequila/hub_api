@@ -1,5 +1,5 @@
+import re
 import httpx
-
 
 from fastapi import HTTPException
 
@@ -21,8 +21,10 @@ class Sigex:
     async def register_document(self, document_name: str, user_signature: str, file_bytes: bytes):
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             # 1. Регистрация документа
+            document_name_cleaned = re.sub(r"[^\w\s]", " ", document_name)[:10].strip()
+
             json_payload = {
-                "title": document_name[:10],
+                "title": document_name_cleaned,
                 "description": "Документ SemguAIS",
                 "signType": "cms",
                 "signature": user_signature

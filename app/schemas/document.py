@@ -136,3 +136,7 @@ class DocumentSignRequest(BaseModel):
 class DocumentExecuteRequest(BaseModel):
     document_id: int
 
+
+class DocumentCancelRequest(BaseModel):
+    document_id: int
+

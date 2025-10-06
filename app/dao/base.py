@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Generic, TypeVar, Type
+from sqlalchemy.orm import load_only
+from typing import Generic, TypeVar, Type, Sequence
 
 
 ModelType = TypeVar("ModelType")
@@ -38,7 +39,7 @@ class BaseDAO(Generic[ModelType]):
 
         return result.scalars().all()
 
-    async def get_one_or_none(self, **filter_by) -> ModelType | None:
+    async def get_one_or_none(self, fields: Sequence | None = None, **filter_by) -> ModelType | None:
         """
         Асинхронно находит и возвращает один экземпляр модели по указанным критериям или None.
 
@@ -49,8 +50,12 @@ class BaseDAO(Generic[ModelType]):
             Экземпляр модели или None, если ничего не найдено.
         """
 
-        query = select(self.model).filter_by(**filter_by)
-        result = await self.session.execute(query)
+        stmt = select(self.model).filter_by(**filter_by)
+
+        if fields:
+            stmt = stmt.options(load_only(*fields))
+
+        result = await self.session.execute(stmt)
 
         return result.scalar_one_or_none()
 

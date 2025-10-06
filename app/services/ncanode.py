@@ -51,6 +51,9 @@ class NCANode:
             return None
 
         for signer in signers:
+
+
+
             certificates = signer.get('certificates', None)
 
             if certificates is not None:

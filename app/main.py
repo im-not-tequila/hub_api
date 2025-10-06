@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.api.router import api_router
 from app.db.postgres_connection import DATABASE_URL
 from app.services.admin import (UserAdmin, DocumentAdmin, DocumentTypeGroupAdmin, DocumentTypeAdmin, UserInfoAdmin,
-                                RoleAdmin, ApproverAdmin, RoleDocumentTypeGroupAdmin)
+                                RoleAdmin, ApproverAdmin, RoleDocumentTypeGroupAdmin, UserRoleAdmin)
 
 
 engine = create_async_engine(DATABASE_URL)
@@ -40,13 +40,16 @@ app.add_middleware(
 app.include_router(api_router)
 
 admin.add_view(UserAdmin)
+admin.add_view(UserRoleAdmin)
+admin.add_view(RoleDocumentTypeGroupAdmin)
 admin.add_view(DocumentAdmin)
 admin.add_view(DocumentTypeGroupAdmin)
 admin.add_view(DocumentTypeAdmin)
-admin.add_view(UserInfoAdmin)
 admin.add_view(RoleAdmin)
+admin.add_view(UserInfoAdmin)
 admin.add_view(ApproverAdmin)
-admin.add_view(RoleDocumentTypeGroupAdmin)
+
+
 
 
 @app.get("/")

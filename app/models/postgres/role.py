@@ -1,5 +1,5 @@
 from sqlalchemy import Integer, Boolean, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, Session
 
 from app.db.postgres_connection import PostgresBase
 # from app.models.postgres.user_role import UserRole
@@ -34,7 +34,8 @@ class Role(PostgresBase, TimestampMixin):
     user_roles: Mapped[list["UserRole"]] = relationship(
         "UserRole",
         back_populates="role",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
 
     document_type_groups: Mapped[list["RoleDocumentTypeGroup"]] = relationship(
@@ -45,3 +46,8 @@ class Role(PostgresBase, TimestampMixin):
 
     def __str__(self):
         return f"{self.id} - {self.name_ru}"
+
+    @staticmethod
+    def active_roles(session: Session):
+        return session.query(Role).filter(Role.is_active == True).order_by(Role.name_ru)
+

@@ -1,8 +1,8 @@
 import enum
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Integer, Boolean, DateTime, func, ForeignKey, Enum, UniqueConstraint, Text
+from sqlalchemy import Integer, Boolean, DateTime, func, ForeignKey, Enum, UniqueConstraint, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.postgres_connection import PostgresBase
@@ -70,11 +70,10 @@ class Approver(PostgresBase, TimestampMixin):
         nullable=False
     )
 
-    signed_at: Mapped[datetime] = mapped_column(
+    status_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=True,
-        default=None
+        nullable=False
     )
 
     __table_args__ = (
@@ -82,3 +81,7 @@ class Approver(PostgresBase, TimestampMixin):
     )
 
 
+@event.listens_for(Approver.status, "set")
+def receive_set(target, value, oldvalue, initiator):
+    if value != oldvalue:
+        target.status_updated_at = datetime.now(timezone.utc)

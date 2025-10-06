@@ -1,10 +1,19 @@
-from datetime import datetime
+from enum import Enum
+from datetime import datetime, timezone
 
-from sqlalchemy import Integer, Boolean, DateTime, func, ForeignKey, String
+from sqlalchemy import Integer, DateTime, func, ForeignKey, String, Enum as sqlalchemyEnum, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.postgres_connection import PostgresBase
 from .timestamp_mixin import TimestampMixin
+
+
+class DocumentStatus(Enum):
+    PENDING = "pending"
+    SIGNED = "signed"
+    REJECTED = "cancelled"
+    ON_EXECUTION = "on_execution"
+    EXECUTED = "executed"
 
 
 class Document(PostgresBase, TimestampMixin):
@@ -67,27 +76,33 @@ class Document(PostgresBase, TimestampMixin):
         index=True
     )
 
-    is_all_signed: Mapped[bool] = mapped_column(
-        Boolean,
+    status: Mapped[DocumentStatus] = mapped_column(
+        sqlalchemyEnum(DocumentStatus, name="document_status", values_callable=lambda x: [e.value for e in x]),
         nullable=False,
-        default=False
+        default = DocumentStatus.PENDING,
     )
 
-    all_signed_at: Mapped[datetime] = mapped_column(
+    status_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
-        nullable=True
-    )
-
-    is_cancelled: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False
+        nullable=False
     )
 
     def __str__(self):
         return f"{self.id} - {self.name}"
 
     def __repr__(self):
-        return f"<Document id={self.id} name={self.name} author_id={self.author_id} recipient_id={self.recipient_id}>"
+        return (
+            f"<Document "
+            f"id={self.id} "
+            f"name={self.name} "
+            f"author_id={self.author_id} "
+            f"recipient_id={self.recipient_id} "
+            f"status={self.status}>"
+        )
 
+
+@event.listens_for(Document.status, "set")
+def receive_set(target, value, oldvalue, initiator):
+    if value != oldvalue:
+        target.status_updated_at = datetime.now(timezone.utc)

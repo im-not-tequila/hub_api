@@ -27,9 +27,15 @@ class UserRole(PostgresBase, TimestampMixin):
 
     role: Mapped["Role"] = relationship(
         "Role",
-        back_populates="user_roles"
+        back_populates="user_roles",
+        lazy="joined"
     )
 
     def __repr__(self):
         return f"<UserRole user_id={self.user_id} role_id={self.role_id}>"
+
+    def __str__(self):
+        if hasattr(self, "role") and self.role is not None:
+            return f"{self.role.id} - {self.role.name_ru}"
+        return f"role_id={self.role_id}"
 

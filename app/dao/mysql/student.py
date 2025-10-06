@@ -1,7 +1,9 @@
 import hashlib
 
+from typing import Sequence
+
 from sqlalchemy import select
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, load_only
 
 from app.dao.base import MySQLDao
 from app.models.mysql import Student, Studyform, Group
@@ -11,11 +13,14 @@ class StudentDAO(MySQLDao):
     def __init__(self, session):
         super().__init__(session, Student)
 
-    async def get_by_iin(self, iin: str, is_student: list[int] | None = None) -> Student | None:
+    async def get_by_iin(self, iin: str, is_student: list[int] | None = None, fields: Sequence | None = None) -> Student | None:
         stmt = select(Student).where(Student.iinplt == iin)
 
         if is_student:
             stmt = stmt.where(Student.isStudent.in_(is_student))
+
+        if fields:
+            stmt = stmt.options(load_only(*fields))
 
         result = await self.session.execute(stmt)
 

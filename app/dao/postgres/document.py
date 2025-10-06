@@ -1,9 +1,20 @@
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import contains_eager, joinedload
 from typing import List
 
 from app.dao.base import PostgresDao
-from app.models.postgres import Document, DocumentTypeGroup, RoleDocumentTypeGroup, Role, UserRole, DocumentType, Executor, ExecutorStatus
+
+from app.models.postgres import (
+    Document,
+    DocumentTypeGroup,
+    RoleDocumentTypeGroup,
+    Role,
+    UserRole,
+    DocumentType,
+    Executor,
+    ExecutorStatus,
+    Approver
+)
 
 
 class DocumentDAO(PostgresDao):
@@ -36,9 +47,20 @@ class DocumentDAO(PostgresDao):
         return groups
 
     async def incoming(self, user_id: int) -> List[Document]:
+        approver_exists = (
+            select(Approver.id)
+            .where(Approver.document_id == Document.id, Approver.approver_id == user_id)
+            .exists()
+        )
+
         query = (
             select(Document)
-            .where(Document.recipient_id == user_id)
+            .where(
+                or_(
+                    Document.recipient_id == user_id,
+                    approver_exists
+                )
+            )
             .order_by(Document.created_at.desc())
         )
 

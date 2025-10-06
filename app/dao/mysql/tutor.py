@@ -1,21 +1,26 @@
 import hashlib
 
-from typing import cast
+from typing import cast, Sequence
 
 from app.dao.base import MySQLDao
 from app.models.mysql import Tutor, TutorCafedra, Cafedra, TutorPositions, Faculty
 from app.models.mysql.structural_subdivision import StructuralSubdivision
 from sqlalchemy import select
+from sqlalchemy.orm import load_only
 
 
 class TutorDAO(MySQLDao):
     def __init__(self, session):
         super().__init__(session, Tutor)
 
-    async def get_by_iin(self, iin: str) -> Tutor:
+    async def get_by_iin(self, iin: str, fields: Sequence | None = None) -> Tutor:
         stmt = select(Tutor).where(Tutor.iinplt == iin)
-        result = await self.session.execute(stmt)
 
+        # Если указаны конкретные поля — добавляем load_only
+        if fields:
+            stmt = stmt.options(load_only(*fields))
+
+        result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_by_platonus_credentials(self, login: str, password: str):
