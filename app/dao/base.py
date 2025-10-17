@@ -29,12 +29,18 @@ class BaseDAO(Generic[ModelType]):
 
         if filters:
             for field, values in filters.items():
+                # column = getattr(self.model, field)
+
                 if isinstance(values, list):
                     stmt = stmt.where(field.in_(values))
                 else:
                     stmt = stmt.where(field == values)
 
         stmt = stmt.limit(limit).offset(offset)
+        print()
+        print(stmt)
+        print()
+        print('11111111111111111111111')
         result = await self.session.execute(stmt)
 
         return result.scalars().all()

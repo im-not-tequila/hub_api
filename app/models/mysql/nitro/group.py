@@ -6,10 +6,10 @@ from sqlalchemy import Date, DateTime, Index, Integer, String, TIMESTAMP, text
 from sqlalchemy.dialects.mysql import DOUBLE
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class Group(MySQLBase):
+class Group(NitroBase):
     __tablename__ = 'groups'
     __table_args__ = (
         Index('groups_specializationID', 'specializationID'),

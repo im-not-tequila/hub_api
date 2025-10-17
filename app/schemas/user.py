@@ -1,3 +1,5 @@
+import datetime
+
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -26,3 +28,31 @@ class UserResponse(BaseModel):
 
         # Генерируем shortname
         self.shortname = f"{self.lastname} {first_initial}{patronymic_initial}".strip()
+
+    class Config:
+        from_attributes = True
+
+class BarrierResponse(BaseModel):
+    id: int
+    inout_data: str
+    access_type: str
+    building_name: str
+    address: str
+    time: str  # строка вида "HH:MM"
+
+    class Config:
+        from_attributes = True
+
+
+class WorkingHoursResponse(BaseModel):
+    id: int
+    date: datetime.date
+    working_hours: float
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    message: str
+    link: str | None = None
+    is_read: bool
+    created_at: datetime.datetime

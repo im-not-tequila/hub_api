@@ -47,6 +47,13 @@ class User(PostgresBase, TimestampMixin):
         lazy="selectin"
     )
 
+    hidden_documents: Mapped[list["HiddenDocument"]] = relationship(
+        "HiddenDocument",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
     def __str__(self):
         if self.is_student:
             role = 'student'

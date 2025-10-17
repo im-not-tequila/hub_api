@@ -79,7 +79,7 @@ docker-compose.override.yml
 *.swo
 
 # Generated models
-app/models/mysql/generated_models.py
+app/models/generated_models.py
 test.py
 storage/
 migrations/versions

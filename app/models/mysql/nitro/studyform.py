@@ -6,10 +6,10 @@ from sqlalchemy import Double, ForeignKeyConstraint, Index, Integer, String, TIM
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class BaseEducation(MySQLBase):
+class BaseEducation(NitroBase):
     __tablename__ = 'base_education'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -21,7 +21,7 @@ class BaseEducation(MySQLBase):
 
 
 
-class Studyform(MySQLBase):
+class Studyform(NitroBase):
     __tablename__ = 'studyforms'
     __table_args__ = (
         ForeignKeyConstraint(['base_education_id'], ['base_education.id'], name='studyform_baseEducation'),

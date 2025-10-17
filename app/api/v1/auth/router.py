@@ -36,6 +36,15 @@ async def ncalayer_verify(data: NcalayerVerifyRequest, response: Response) -> Nc
         max_age=7 * 24 * 60 * 60,  # 7 дней
     )
 
+    response.set_cookie(
+        key="access_token",
+        value=tokens.access_token,
+        httponly=True,  # защищаем от XSS
+        secure=True,  # только HTTPS
+        samesite="none",
+        max_age=60 * 60  # 1 час или сколько у тебя живет access токен
+    )
+
     return NcalayerVerifyResponse(
         access_token=tokens.access_token,
         user=user,
@@ -58,6 +67,15 @@ async def platonus_login(data: PlatonusLoginRequest, response: Response):
         max_age=7 * 24 * 60 * 60,  # 7 дней
     )
 
+    response.set_cookie(
+        key="access_token",
+        value=tokens.access_token,
+        httponly=True,  # защищаем от XSS
+        secure=True,  # только HTTPS
+        samesite="none",
+        max_age=60 * 60  # 1 час или сколько у тебя живет access токен
+    )
+
     return PlatonusLoginResponse(
         access_token=tokens.access_token,
         user=user,
@@ -68,13 +86,22 @@ async def platonus_login(data: PlatonusLoginRequest, response: Response):
     path="/refresh_token",
     response_model=RefreshTokenResponse
 )
-async def refresh_token(request: Request):
+async def refresh_token(request: Request, response: Response):
     """
     Обновление access токена по refresh токену.
     """
 
-    _refresh_token = request.cookies.get("refresh_token")
-    new_access_token = await AuthService.refresh_access_token(_refresh_token)
+    refresh_token_cookie = request.cookies.get("refresh_token")
+    new_access_token = await AuthService.refresh_access_token(refresh_token_cookie)
+
+    response.set_cookie(
+        key="access_token",
+        value=new_access_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=60 * 60,  # 1 час
+    )
 
     return RefreshTokenResponse(
         access_token=new_access_token,

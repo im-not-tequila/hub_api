@@ -6,10 +6,10 @@ from sqlalchemy import Date, Double, ForeignKeyConstraint, Index, Integer, Strin
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class TutorCafedra(MySQLBase):
+class TutorCafedra(NitroBase):
     __tablename__ = 'tutor_cafedra'
     __table_args__ = (
         ForeignKeyConstraint(['cafedraid'], ['cafedras.cafedraID'], ondelete='CASCADE', onupdate='CASCADE', name='FK_cafedraid'),

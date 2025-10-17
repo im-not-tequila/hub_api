@@ -34,7 +34,7 @@ class DocumentType(PostgresBase, TimestampMixin):
 
     document_type_group = relationship(
         "DocumentTypeGroup",
-        backref="document_types_group",
+        back_populates="document_types",
         lazy="joined"
     )
 

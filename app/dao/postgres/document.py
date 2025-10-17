@@ -1,8 +1,9 @@
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import contains_eager, joinedload
 from typing import List
 
 from app.dao.base import PostgresDao
+from app.models.postgres import DocumentStatus
 
 from app.models.postgres import (
     Document,
@@ -49,8 +50,10 @@ class DocumentDAO(PostgresDao):
     async def incoming(self, user_id: int) -> List[Document]:
         approver_exists = (
             select(Approver.id)
-            .where(Approver.document_id == Document.id, Approver.approver_id == user_id)
-            .exists()
+            .where(
+                Approver.document_id == Document.id,
+                Approver.approver_id == user_id
+            ).exists()
         )
 
         query = (
@@ -59,6 +62,9 @@ class DocumentDAO(PostgresDao):
                 or_(
                     Document.recipient_id == user_id,
                     approver_exists
+                ),
+                and_(
+                    Document.status != DocumentStatus.REVOKED
                 )
             )
             .order_by(Document.created_at.desc())
@@ -69,11 +75,13 @@ class DocumentDAO(PostgresDao):
 
         return documents
 
-
     async def outgoing(self, user_id: int) -> List[Document]:
         query = (
             select(Document)
-            .where(Document.author_id == user_id)
+            .where(
+                Document.author_id == user_id,
+                Document.status != DocumentStatus.REVOKED
+            )
             .order_by(Document.created_at.desc())
         )
 
@@ -88,6 +96,7 @@ class DocumentDAO(PostgresDao):
             .join(Executor, Executor.document_id == Document.id)
             .where(Executor.executor_id == user_id)
             .where(Executor.status == ExecutorStatus.PENDING_EXECUTION)  # только в ожидании
+            .where(Document.status != DocumentStatus.REVOKED)
             .options(joinedload(Document.document_type))  # подтягиваем тип документа
             .options(joinedload(Document.author_user))    # подтягиваем автора
             .order_by(Document.created_at.desc())
@@ -104,6 +113,7 @@ class DocumentDAO(PostgresDao):
             .join(Executor, Executor.document_id == Document.id)
             .where(Executor.executor_id == user_id)
             .where(Executor.status == ExecutorStatus.COMPLETED)
+            .where(Document.status != DocumentStatus.REVOKED)
             .options(joinedload(Document.document_type))  # подтягиваем тип документа
             .options(joinedload(Document.author_user))    # подтягиваем автора
             .order_by(Document.created_at.desc())

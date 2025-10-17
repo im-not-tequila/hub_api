@@ -1,6 +1,6 @@
 from .user_ecp_info import UserEcpInfo
 from .tokens import Tokens
-from .user import UserResponse
+from .user import UserResponse, BarrierResponse, WorkingHoursResponse, NotificationResponse
 from .document import (
     DocumentUploadRequest,
     OutgoingResponse,
@@ -9,9 +9,7 @@ from .document import (
     DocumentType,
     Person,
     ApproverPerson,
-    DocumentSignRequest,
-    DocumentExecuteRequest,
-    DocumentCancelRequest
+    DocumentSignRequest
 )
 from .auth import (NcalayerVerifyRequest, NcalayerVerifyResponse, PlatonusLoginRequest, PlatonusLoginResponse,
                    GetChallengeResponse, RefreshToken, RefreshTokenResponse )
@@ -29,7 +27,6 @@ __all__ = [
     'Person',
     'ApproverPerson',
     'DocumentSignRequest',
-    'DocumentCancelRequest',
     'NcalayerVerifyRequest',
     'NcalayerVerifyResponse',
     'PlatonusLoginRequest',
@@ -37,5 +34,7 @@ __all__ = [
     'GetChallengeResponse',
     'RefreshToken',
     'RefreshTokenResponse',
-    'DocumentExecuteRequest'
+    'BarrierResponse',
+    'WorkingHoursResponse',
+    'NotificationResponse'
 ]

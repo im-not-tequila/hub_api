@@ -5,10 +5,10 @@ from sqlalchemy import Index, Integer, String, TIMESTAMP, text
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class StructuralSubdivision(MySQLBase):
+class StructuralSubdivision(NitroBase):
     __tablename__ = 'structural_subdivision'
     __table_args__ = (
         Index('deleted', 'deleted'),

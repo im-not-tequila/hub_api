@@ -1,14 +1,13 @@
 import json
-import asyncio
 
-from fastapi import APIRouter, Depends, Response, UploadFile, File, status, Query, Form
+from fastapi import APIRouter, Depends, Response, UploadFile, File, status, Query, Form, HTTPException
 from fastapi.responses import FileResponse
 
 from typing import List
 
 from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas import DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, DocumentExecuteRequest, DocumentCancelRequest
+from app.schemas import (DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest)
 from app.services.document import DocumentService
 
 
@@ -22,7 +21,7 @@ router = APIRouter()
 async def incoming(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
-    return await DocumentService().collect_user_documents(current_user, 'incoming')
+    return await DocumentService().incoming(current_user)
 
 
 @router.get(
@@ -32,18 +31,17 @@ async def incoming(
 async def outgoing(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
-    # await asyncio.sleep(15)
-    return await DocumentService().collect_user_documents(current_user, 'outgoing')
+    return await DocumentService().outgoing(current_user)
 
 
 @router.get(
-    path="/pending_execution",
+    path="/pending-execution",
     response_model=List[OutgoingResponse]
 )
 async def pending_execution(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
-    return await DocumentService().collect_user_documents(current_user, 'pending_execution')
+    return await DocumentService().pending_execution(current_user)
 
 
 @router.get(
@@ -53,11 +51,11 @@ async def pending_execution(
 async def executed(
         current_user: UserModel = Depends(get_current_user)
 ) -> List[OutgoingResponse]:
-    return await DocumentService().collect_user_documents(current_user, 'executed')
+    return await DocumentService().executed(current_user)
 
 
 @router.get(
-    path="/types_and_categories",
+    path="/types-and-categories",
     response_model=List[DocumentTypesAndCategory]
 )
 async def types_and_categories(
@@ -68,88 +66,135 @@ async def types_and_categories(
 
 
 @router.post(
-    path="/upload"
+    path="/upload",
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def upload(
     document_name: str = Form(...),
     document_type_id: int = Form(...),
     recipient_id: int = Form(...),
     approver_user_ids: str = Form(...),  # приходит как JSON-строка
-    cms: str = Form(...),
+    signature: str = Form(...),
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
 ):
     try:
         approver_user_ids_list = json.loads(approver_user_ids)
     except json.JSONDecodeError:
-        return Response(content="Invalid JSON for approver_user_ids", status_code=status.HTTP_400_BAD_REQUEST)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON for approver_user_ids"
+        )
 
     data = DocumentUploadRequest(
         document_name=document_name,
         document_type_id=document_type_id,
         recipient_id=recipient_id,
         approver_user_ids=approver_user_ids_list,
-        cms=cms
+        signature=signature
     )
 
     await DocumentService().upload(data, file, current_user)
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
+@router.post(
+    path="/upload-custom/{document_type}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def upload_custom():
+    pass
 
 @router.post(
-    path="/sign",
+    path="/{document_id}/sign",
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def sign(
+        document_id: int,
         data: DocumentSignRequest,
         current_user: UserModel = Depends(get_current_user)
 ):
     await DocumentService().sign(
-        document_id=data.document_id,
-        user_signature=data.cms,
+        document_id=document_id,
+        user_signature=data.signature,
         user=current_user,
         resolution=data.resolution,
         executors=data.executors
     )
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
 
 @router.post(
-    path="/cancel"
+    path="/{document_id}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def cancel(
-        data: DocumentCancelRequest,
+        document_id: int,
         current_user: UserModel = Depends(get_current_user)
 ):
     await DocumentService().cancel(
-        document_id=data.document_id,
+        document_id=document_id,
         approver_id=current_user.id
     )
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
 
 @router.post(
-    path="/execute",
+    path="/{document_id}/execute",
+    status_code=status.HTTP_204_NO_CONTENT
 )
 async def execute(
-        data: DocumentExecuteRequest,
+        document_id: int,
         current_user: UserModel = Depends(get_current_user)
 ):
     await DocumentService().execute(
-        document_id=data.document_id,
+        document_id=document_id,
         executor_id=current_user.id
     )
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.post(
+    path="/{document_id}/revoke",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def revoke(
+        document_id: int,
+        current_user: UserModel = Depends(get_current_user)
+):
+    await DocumentService().revoke(
+        user_id=current_user.id,
+        document_id=document_id
+    )
+
+
+@router.post(
+    path="/{document_id}/hide",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def hide(
+        document_id: int,
+        current_user: UserModel = Depends(get_current_user)
+):
+    await DocumentService().hide(
+        user_id=current_user.id,
+        document_id=document_id
+    )
+
+@router.post(
+    path="/{document_id}/unhide",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+async def unhide(
+        document_id: int,
+        current_user: UserModel = Depends(get_current_user)
+):
+    await DocumentService().unhide(
+        user_id=current_user.id,
+        document_id=document_id
+    )
 
 
 @router.get(
-    path="/pdf"
+    path="/{document_id}/pdf"
 )
 async def pdf(
-        document_id: int = Query(...),
+        document_id: int,
         current_user: UserModel = Depends(get_current_user)
 ):
     file_path = await DocumentService().pdf(document_id)

@@ -1,4 +1,4 @@
-from typing import ClassVar
+from typing import ClassVar, Optional
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     MYSQL_PORT: int
     MYSQL_USER: str
     MYSQL_PASSWORD: str
-    MYSQL_DATABASE: str
+    MYSQL_DATABASE_NITRO: str
+    MYSQL_DATABASE_PERCO: str
 
     PG_HOST: str
     PG_PORT: int
@@ -30,6 +31,13 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str
     REDIS_DATABASE: int
 
+    # 👉 Добавляем опциональные SSH-настройки
+    SSH_HOST: Optional[str] = None
+    SSH_PORT: Optional[int] = None
+    SSH_USER: Optional[str] = None
+    SSH_KEY_PATH: Optional[str] = None
+    SSH_PASSWORD: Optional[str] = None
+
     CURRENT_DIRECTORY: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent
     STORAGE_DIRECTORY: ClassVar[Path] = CURRENT_DIRECTORY / "storage"
 
@@ -38,6 +46,18 @@ class Settings(BaseSettings):
 
         if not self.STORAGE_DIRECTORY.exists():
             self.STORAGE_DIRECTORY.mkdir(parents=True)
+
+    @property
+    def ssh_enabled(self) -> bool:
+        """
+        Возвращает True, если заданы SSH-параметры
+        """
+        return (
+            self.SSH_HOST is not None
+            and self.SSH_USER is not None
+            and (self.SSH_KEY_PATH is not None or self.SSH_PASSWORD is not None)
+        )
+
 
 def get_settings() -> Settings:
     return Settings()

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import aliased, load_only
 
 from app.dao.base import MySQLDao
-from app.models.mysql import Student, Studyform, Group
+from app.models.mysql.nitro import Student, Studyform, Group
 
 
 class StudentDAO(MySQLDao):
@@ -31,7 +31,7 @@ class StudentDAO(MySQLDao):
         md5_hash.update(password.encode('utf-8'))
         md5_password = md5_hash.hexdigest()
 
-        stmt = select(Student).where(Student.Login == login, Student.Password == md5_password)
+        stmt = select(Student.StudentID).where(Student.Login == login, Student.Password == md5_password)
         result = await self.session.execute(stmt)
 
         return result.scalar_one_or_none()

@@ -1,17 +1,20 @@
 import hashlib
+import datetime
 
 from typing import cast, Sequence
 
 from app.dao.base import MySQLDao
-from app.models.mysql import Tutor, TutorCafedra, Cafedra, TutorPositions, Faculty
-from app.models.mysql.structural_subdivision import StructuralSubdivision
-from sqlalchemy import select
+from app.models.mysql.nitro import Tutor, TutorCafedra, Cafedra, TutorPositions, Faculty, StructuralSubdivision, Building
+from app.models.mysql.perco import Personcontrol, Control
+from sqlalchemy import select, func
 from sqlalchemy.orm import load_only
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TutorDAO(MySQLDao):
-    def __init__(self, session):
+    def __init__(self, session, session_perco: AsyncSession = None):
         super().__init__(session, Tutor)
+        self.session_perco = session_perco
 
     async def get_by_iin(self, iin: str, fields: Sequence | None = None) -> Tutor:
         stmt = select(Tutor).where(Tutor.iinplt == iin)
@@ -28,7 +31,7 @@ class TutorDAO(MySQLDao):
         md5_hash.update(password.encode('utf-8'))
         md5_password = md5_hash.hexdigest()
 
-        stmt = select(Tutor).where(Tutor.Login == login, Tutor.Password == md5_password)
+        stmt = select(Tutor.TutorID).where(Tutor.Login == login, Tutor.Password == md5_password)
         result = await self.session.execute(stmt)
 
         return result.scalar_one_or_none()
@@ -41,7 +44,7 @@ class TutorDAO(MySQLDao):
                 Tutor,
                 StructuralSubdivision,
             )
-            .join(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
+            .outerjoin(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
         )
 
         if filters:
@@ -100,4 +103,61 @@ class TutorDAO(MySQLDao):
         result = await self.session.execute(stmt)
 
         return result.mappings().all()
+
+    async def get_tutor_actions_barrier_by_date(self, tutor_id: int, target_date: datetime.date):
+        if self.session_perco is None:
+            raise Exception("Sessions are not initialized")
+
+        # 1. Получаем данные из Perco
+        stmt_perco = (
+            select(
+                Personcontrol.controlid,
+                Personcontrol.inoutdata,
+                Personcontrol.type,
+                Control.buildingid,
+                Personcontrol.createdate
+            )
+            .join(Personcontrol, Personcontrol.turniketid == Control.turniketid)
+            .where(
+                func.date(Personcontrol.createdate) == target_date,
+                Personcontrol.personid == tutor_id
+            )
+            .order_by(Personcontrol.createdate)
+        )
+
+        perco_result = await self.session_perco.execute(stmt_perco)
+        perco_rows = perco_result.mappings().all()
+
+        if not perco_rows:
+            return []
+
+        # 2. Собираем уникальные buildingid
+        building_ids = list({row["buildingid"] for row in perco_rows if row["buildingid"] is not None})
+
+        # 3. Получаем данные по зданиям из другой БД (Nitro)
+        stmt_nitro = (
+            select(Building.buildingID, Building.buildingName, Building.address)
+            .where(Building.buildingID.in_(building_ids))
+        )
+
+        nitro_result = await self.session.execute(stmt_nitro)
+        buildings = nitro_result.mappings().all()
+
+        # Преобразуем в словарь для быстрого доступа
+        buildings_dict = {b["buildingID"]: {"buildingName": b["buildingName"], "address": b["address"]} for b in buildings}
+
+        # 4. Объединяем данные
+        final_result = []
+        for row in perco_rows:
+            binfo = buildings_dict.get(row["buildingid"], {"buildingName": None, "address": None})
+            final_result.append({
+                "id": row["controlid"],
+                "inout_data": row["inoutdata"],
+                "access_type": row["type"],
+                "building_name": binfo["buildingName"],
+                "address": binfo["address"],
+                "time": row["createdate"].strftime("%H:%M") if row["createdate"] else None
+            })
+
+        return final_result
 

@@ -10,15 +10,29 @@ host = settings.MYSQL_HOST
 port = settings.MYSQL_PORT
 user = settings.MYSQL_USER
 password = settings.MYSQL_PASSWORD
-database = settings.MYSQL_DATABASE
+database_nitro = settings.MYSQL_DATABASE_NITRO
+database_perco = settings.MYSQL_DATABASE_PERCO
 
-DATABASE_URL = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database}"
+if settings.ssh_enabled:
+    host = "127.0.0.1"
+    port = 3307
 
-engine_mysql = create_async_engine(DATABASE_URL, echo=True)
+DATABASE_URL_NITRO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_nitro}"
+DATABASE_URL_PERCO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_perco}"
 
-async_session_mysql = async_sessionmaker(
-    engine_mysql, expire_on_commit=False
+engine_mysql_nitro = create_async_engine(DATABASE_URL_NITRO, echo=True)
+engine_mysql_perco = create_async_engine(DATABASE_URL_PERCO, echo=True)
+
+async_session_mysql_nitro = async_sessionmaker(
+    engine_mysql_nitro, expire_on_commit=False
 )
 
-class MySQLBase(DeclarativeBase):
+async_session_mysql_perco = async_sessionmaker(
+    engine_mysql_perco, expire_on_commit=False
+)
+
+class NitroBase(DeclarativeBase):
+    pass
+
+class PercoBase(DeclarativeBase):
     pass

@@ -5,10 +5,10 @@ from sqlalchemy import Date, Index, Integer, String, TIMESTAMP, Text, text
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class Cafedra(MySQLBase):
+class Cafedra(NitroBase):
     __tablename__ = 'cafedras'
     __table_args__ = (
         Index('practmanager', 'practmanager'),

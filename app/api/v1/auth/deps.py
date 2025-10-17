@@ -1,48 +1,49 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Request, WebSocket, HTTPException, status
 from jose import jwt, JWTError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import get_settings
 from app.db.session import get_postgres_session
-from app.models.postgres.user import User
 from app.dao.postgres import UserDAO
-
+from app.models.postgres.user import User
 
 settings = get_settings()
 
-# Указываем эндпоинт для получения токена
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
-
-async def get_current_user(
-    token: str = Depends(oauth2_scheme),
-) -> User:
+async def get_current_user(request: Request) -> User:
     """
-    Достает текущего пользователя из access-токена.
+    Достает текущего пользователя из access-токена в cookie.
+    Работает и для обычных запросов, и для WebSocket.
     """
 
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id: str = payload.get("sub")
-
         if user_id is None:
-            raise credentials_exception
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
 
     except JWTError:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
 
     async with get_postgres_session() as session:
         user_dao = UserDAO(session)
         user = await user_dao.get_by_id(int(user_id))
 
         if user is None:
-            raise credentials_exception
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
 
-        return user
+    return user

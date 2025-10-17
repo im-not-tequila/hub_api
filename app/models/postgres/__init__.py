@@ -8,6 +8,9 @@ from .document_type_group import DocumentTypeGroup
 from .approver import Approver, ApproverStatus
 from .role_document_type_group import RoleDocumentTypeGroup
 from .executor import Executor, ExecutorStatus
+from .hidden_document import HiddenDocument
+from .travel_funding_source import TravelFundingSource
+from .notification import Notification
 
 
 __all__ = [
@@ -24,4 +27,7 @@ __all__ = [
     'RoleDocumentTypeGroup',
     'Executor',
     'ExecutorStatus',
+    'HiddenDocument',
+    'TravelFundingSource',
+    'Notification'
 ]

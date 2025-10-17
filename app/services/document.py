@@ -8,9 +8,10 @@ from fastapi import HTTPException, UploadFile
 
 from app.dao.mysql import TutorDAO, StudentDAO
 from app.services.ncanode import NCANode
+from app.services.notification import send_notification
 from app.core.settings import get_settings
 from app.db.session import get_postgres_session, get_mysql_session
-from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO
+from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO, HiddenDocumentDAO
 from app.services.sigex import Sigex
 
 from app.schemas import (
@@ -33,127 +34,11 @@ from app.models.postgres import (
     ExecutorStatus
 )
 
-from app.models.mysql import Tutor as TutorModel
+from app.models.mysql.nitro import Tutor as TutorModel
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 
 
 class DocumentService:
-    async def upload(self, data: DocumentUploadRequest, file: UploadFile, current_user: UserModel):
-        file_content = await file.read()
-        base64_string = base64.b64encode(file_content).decode('utf-8')
-        user_ecp_info = NCANode().cms_verify(data.cms, base64_string)
-
-        if not user_ecp_info:
-            raise HTTPException(status_code=400, detail="Invalid signature")
-
-        sigex = Sigex()
-        sigex_data = await sigex.register_document(
-            document_name=data.document_name,
-            user_signature=data.cms,
-            file_bytes=file_content
-        )
-
-        async with get_mysql_session() as mysql_session:
-            async with get_postgres_session() as postgres_session:
-                recipient_user = await MigrateUserMysqlToPostgres(
-                    mysql_session,
-                    postgres_session
-                ).migrate_by_tutor_id(
-                    tutor_id=data.recipient_id
-                )
-
-                if recipient_user is None:
-                    raise HTTPException(status_code=400, detail="Recipient user not found")
-
-                document = await DocumentDAO(postgres_session).add(
-                    author_id=current_user.id,
-                    recipient_id=recipient_user.id,
-                    document_type_id=data.document_type_id,
-                    name=data.document_name,
-                    sigex_id=sigex_data['sigex_document_id']
-                )
-
-                await ApproverDAO(postgres_session).add_if_not_exists(
-                    document_id=document.id,
-                    approver_id=recipient_user.id,
-                    is_recipient=True
-                )
-
-                await postgres_session.refresh(document, attribute_names=["author_user"])
-                author_platonus_id = document.author_user.platonus_id
-
-        platonus_id = current_user.platonus_id if current_user.platonus_id else "no_platonus_id"
-
-        document_directory = (get_settings().STORAGE_DIRECTORY
-                              / "docs"
-                              / datetime.now().strftime("%Y")
-                              / str(document.document_type_id)
-                              / str(author_platonus_id)
-                              / str(document.id)
-                              )
-
-        document_directory.mkdir(parents=True, exist_ok=True)
-
-        await self._save_signature_to_file(document, platonus_id, data.cms, False)
-        await self._save_signature_to_file(document, platonus_id, sigex_data['sigex_cms'], True)
-
-        async with aiofiles.open(document_directory / 'document.pdf', "wb") as out_file:
-            await out_file.write(file_content)
-
-        async with get_mysql_session() as mysql_session:
-            async with get_postgres_session() as postgres_session:
-                for approver_id in data.approver_user_ids:
-                    recipient_user = await MigrateUserMysqlToPostgres(
-                        mysql_session,
-                        postgres_session
-                    ).migrate_by_tutor_id(
-                        tutor_id=approver_id
-                    )
-
-                    await ApproverDAO(postgres_session).add_if_not_exists(
-                        document_id=document.id,
-                        approver_id=int(recipient_user.id),
-                        is_recipient=False
-                    )
-
-                # approvers_data = [
-                #     {"document_id": document.id, "approver_user_id": user_id}
-                #     for user_id in data.approver_user_ids
-                # ]
-                #
-                # await ApproverDAO(postgres_session).bulk_add(approvers_data)
-
-    @staticmethod
-    async def types_and_categories(user: UserModel, language: str) -> List[DocumentTypesAndCategory]:
-        async with get_postgres_session() as postgres_session:
-            groups = await DocumentDAO(postgres_session).get_all_types_and_categories(user.id)
-            response: List[DocumentTypesAndCategory] = []
-
-            for group in groups:
-                category_name = group.name_kz if language == "kz" else group.name_ru
-
-                active_document_types = [
-                    DocumentType(
-                        id=doc_type.id,
-                        name=doc_type.name_kz if language == "kz" else doc_type.name_ru
-                    )
-                    for doc_type in group.document_types
-                    if doc_type.is_active
-                ]
-
-                category = DocumentCategory(
-                    id=group.id,
-                    name=category_name
-                )
-
-                response.append(
-                    DocumentTypesAndCategory(
-                        category=category,
-                        document_types=active_document_types
-                    )
-                )
-
-            return response
 
     @staticmethod
     async def _collect_tutor_and_subdivision_by_documents(documents: list[DocumentModel]):
@@ -174,6 +59,8 @@ class DocumentService:
 
                 for approver in all_approvers:
                     platonus_ids.append(approver.approver_user.platonus_id)
+
+                platonus_ids = list(set(platonus_ids))
 
                 tutors = await TutorDAO(mysql_session).get_tutors_and_position(
                     filters={
@@ -197,7 +84,10 @@ class DocumentService:
                 sender = await StudentDAO(mysql_session).get_by_id(document.author_user.platonus_id)
                 sender_position = 'Студент'
             else:
-                sender = await TutorDAO(mysql_session).get_one_or_none(TutorID=document.author_user.platonus_id)
+                sender = await TutorDAO(mysql_session).get_one_or_none(
+                    fields=[TutorModel.firstname, TutorModel.lastname, TutorModel.patronymic],
+                    TutorID=document.author_user.platonus_id
+                )
                 sender_position = 'Сотрудник университета'
 
                 all_tutors_and_position = await TutorDAO(mysql_session).get_tutors_and_position(
@@ -237,10 +127,12 @@ class DocumentService:
             else:
                 status = DocumentStatus.PENDING
 
+        recipient_position = subdivision_dict.get(document.recipient_user.platonus_id)
+
         recipient = {
             'platonus_user': tutors_dict.get(document.recipient_user.platonus_id),
             'hub_user': document.recipient_user,
-            'position': subdivision_dict.get(document.recipient_user.platonus_id).nameru,
+            'position': recipient_position.nameru if recipient_position else None,
             'status': status
         }
 
@@ -267,7 +159,7 @@ class DocumentService:
                     firstname=approver_user.firstname,
                     lastname=approver_user.lastname,
                     patronymic=approver_user.patronymic,
-                    role=approver_position.nameru,
+                    role=approver_position.nameru if approver_position else None,
                     avatar=None,
                     status=approver.status
                 )
@@ -276,7 +168,7 @@ class DocumentService:
 
             return approvers_response
 
-    async def collect_user_documents(self, current_user: UserModel, category: str):
+    async def _collect_user_documents(self, current_user: UserModel, category: str):
         async with get_postgres_session() as postgres_session:
             if category == 'incoming':
                 documents = await DocumentDAO(postgres_session).incoming(current_user.id)
@@ -294,6 +186,7 @@ class DocumentService:
                 sender = await self._collect_sender_by_document(document)
                 recipient = await self._collect_recipient(document, current_user, tutors_dict, subdivision_dict)
                 approvers_response = await self._collect_approvers_by_document(document, tutors_dict, subdivision_dict)
+                is_hidden = await HiddenDocumentDAO(postgres_session).is_hidden(current_user.id, document.id)
 
                 sender_response = Person(
                     id=document.author_id,
@@ -325,7 +218,8 @@ class DocumentService:
                         type=document.document_type.name_ru,
                         type_id=document.document_type_id,
                         create_datetime=document.created_at,
-                        status=document.status
+                        status=document.status,
+                        is_hidden=is_hidden,
                     )
                 )
 
@@ -366,6 +260,139 @@ class DocumentService:
 
         async with aiofiles.open(document_directory / f"{prefix}{user_platonus_id}.cms", "w") as f:
             await f.write(signature)
+
+    async def incoming(self, user: UserModel):
+        return await self._collect_user_documents(user, 'incoming')
+
+    async def outgoing(self, user: UserModel):
+        return await self._collect_user_documents(user, 'outgoing')
+
+    async def pending_execution(self, user: UserModel):
+        return await self._collect_user_documents(user, 'pending_execution')
+
+    async def executed(self, user: UserModel):
+        return await self._collect_user_documents(user, 'executed')
+
+    async def upload(self, data: DocumentUploadRequest, file: UploadFile, current_user: UserModel):
+        file_content = await file.read()
+        base64_string = base64.b64encode(file_content).decode('utf-8')
+        user_ecp_info = NCANode().cms_verify(data.signature, base64_string)
+
+        if not user_ecp_info:
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+        sigex = Sigex()
+        sigex_data = await sigex.register_document(
+            document_name=data.document_name,
+            user_signature=data.signature,
+            file_bytes=file_content
+        )
+
+        async with get_mysql_session() as mysql_session:
+            async with get_postgres_session() as postgres_session:
+                recipient_user = await MigrateUserMysqlToPostgres(
+                    mysql_session,
+                    postgres_session
+                ).migrate_by_tutor_id(
+                    tutor_id=data.recipient_id
+                )
+
+                if recipient_user is None:
+                    raise HTTPException(status_code=400, detail="Recipient user not found")
+
+                document = await DocumentDAO(postgres_session).add(
+                    author_id=current_user.id,
+                    recipient_id=recipient_user.id,
+                    document_type_id=data.document_type_id,
+                    name=data.document_name,
+                    sigex_id=sigex_data['sigex_document_id']
+                )
+
+                await ApproverDAO(postgres_session).add_if_not_exists(
+                    document_id=document.id,
+                    approver_id=recipient_user.id,
+                    is_recipient=True
+                )
+
+                await send_notification(recipient_user.id, 'Вам отправлен документ')
+                await postgres_session.refresh(document, attribute_names=["author_user"])
+                author_platonus_id = document.author_user.platonus_id
+
+        platonus_id = current_user.platonus_id if current_user.platonus_id else "no_platonus_id"
+
+        document_directory = (get_settings().STORAGE_DIRECTORY
+                              / "docs"
+                              / datetime.now().strftime("%Y")
+                              / str(document.document_type_id)
+                              / str(author_platonus_id)
+                              / str(document.id)
+                              )
+
+        document_directory.mkdir(parents=True, exist_ok=True)
+
+        await self._save_signature_to_file(document, platonus_id, data.signature, False)
+        await self._save_signature_to_file(document, platonus_id, sigex_data['sigex_cms'], True)
+
+        async with aiofiles.open(document_directory / 'document.pdf', "wb") as out_file:
+            await out_file.write(file_content)
+
+        async with get_mysql_session() as mysql_session:
+            async with get_postgres_session() as postgres_session:
+                for approver_id in data.approver_user_ids:
+                    recipient_user = await MigrateUserMysqlToPostgres(
+                        mysql_session,
+                        postgres_session
+                    ).migrate_by_tutor_id(
+                        tutor_id=approver_id
+                    )
+
+                    await ApproverDAO(postgres_session).add_if_not_exists(
+                        document_id=document.id,
+                        approver_id=int(recipient_user.id),
+                        is_recipient=False
+                    )
+
+                # approvers_data = [
+                #     {"document_id": document.id, "approver_user_id": user_id}
+                #     for user_id in data.approver_user_ids
+                # ]
+                #
+                # await ApproverDAO(postgres_session).bulk_add(approvers_data)
+
+    async def upload_custom(self):
+        pass
+
+    @staticmethod
+    async def types_and_categories(user: UserModel, language: str) -> List[DocumentTypesAndCategory]:
+        async with get_postgres_session() as postgres_session:
+            groups = await DocumentDAO(postgres_session).get_all_types_and_categories(user.id)
+            response: List[DocumentTypesAndCategory] = []
+
+            for group in groups:
+                category_name = group.name_kz if language == "kz" else group.name_ru
+
+                active_document_types = [
+                    DocumentType(
+                        id=doc_type.id,
+                        name=doc_type.name_kz if language == "kz" else doc_type.name_ru
+                    )
+                    for doc_type in group.document_types
+                    if doc_type.is_active
+                ]
+
+                category = DocumentCategory(
+                    id=group.id,
+                    name=category_name
+                )
+
+                response.append(
+                    DocumentTypesAndCategory(
+                        category=category,
+                        document_types=active_document_types
+                    )
+                )
+
+            return response
 
     async def sign(
             self,
@@ -504,6 +531,34 @@ class DocumentService:
             if is_all_completed:
                 await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.EXECUTED)
 
+    @staticmethod
+    async def revoke(user_id:int, document_id: int):
+        async with get_postgres_session() as postgres_session:
+            document = await DocumentDAO(postgres_session).get_by_id(document_id)
+
+            if document.author_id != user_id:
+                raise HTTPException(status_code=403, detail="You are not the author of this document")
+
+            await DocumentDAO(postgres_session).update(
+                obj_id=document_id,
+                status=DocumentStatus.REVOKED
+            )
+
+    @staticmethod
+    async def hide(user_id: int, document_id: int):
+        async with get_postgres_session() as postgres_session:
+            await HiddenDocumentDAO(postgres_session).hide(
+                user_id=user_id,
+                document_id=document_id
+            )
+
+    @staticmethod
+    async def unhide(user_id: int, document_id: int):
+        async with get_postgres_session() as postgres_session:
+            await HiddenDocumentDAO(postgres_session).unhide(
+                user_id=user_id,
+                document_id=document_id
+            )
 
     @staticmethod
     async def pdf(document_id: int):

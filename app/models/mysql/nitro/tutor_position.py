@@ -5,10 +5,10 @@ from sqlalchemy import Integer, String, TIMESTAMP, text
 from sqlalchemy.dialects.mysql import TINYINT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class TutorPositions(MySQLBase):
+class TutorPositions(NitroBase):
     __tablename__ = 'tutor_positions'
 
     ID: Mapped[int] = mapped_column(Integer, primary_key=True)

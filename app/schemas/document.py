@@ -10,13 +10,14 @@ class DocumentUploadRequest(BaseModel):
     document_type_id: int
     recipient_id: int
     approver_user_ids: List[int]
-    cms: str
+    signature: str
 
 
 class DocumentStatus(str, Enum):
     PENDING = "pending"
     SIGNED = "signed"
     REJECTED = "cancelled"
+    REVOKED = "revoked"
 
     NOT_APPROVED_BY_YOU = 'Вы не согласовали'
     APPROVED_BY_YOU = 'Вы согласовали'
@@ -71,6 +72,7 @@ class OutgoingResponse(BaseModel):
     type_id: int
     create_datetime: datetime
     status: DocumentStatus
+    is_hidden: bool
 
     class Config:
         json_schema_extra = {
@@ -127,16 +129,6 @@ class DocumentTypesAndCategory(BaseModel):
 
 
 class DocumentSignRequest(BaseModel):
-    document_id: int
     resolution: str | None
     executors: List[int]
-    cms: str
-
-
-class DocumentExecuteRequest(BaseModel):
-    document_id: int
-
-
-class DocumentCancelRequest(BaseModel):
-    document_id: int
-
+    signature: str

@@ -14,6 +14,7 @@ class DocumentStatus(Enum):
     REJECTED = "cancelled"
     ON_EXECUTION = "on_execution"
     EXECUTED = "executed"
+    REVOKED = "revoked"
 
 
 class Document(PostgresBase, TimestampMixin):
@@ -86,6 +87,13 @@ class Document(PostgresBase, TimestampMixin):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
+    )
+
+    hidden_by_users: Mapped[list["HiddenDocument"]] = relationship(
+        "HiddenDocument",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
 
     def __str__(self):

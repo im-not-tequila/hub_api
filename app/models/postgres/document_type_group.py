@@ -32,7 +32,7 @@ class DocumentTypeGroup(PostgresBase, TimestampMixin):
 
     document_types = relationship(
         "DocumentType",
-        backref="group",
+        back_populates="document_type_group",
         cascade="all, delete-orphan"
     )
 

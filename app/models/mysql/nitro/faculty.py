@@ -4,10 +4,10 @@ import datetime
 from sqlalchemy import Date, Index, Integer, String, TIMESTAMP, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class Faculty(MySQLBase):
+class Faculty(NitroBase):
     __tablename__ = 'faculties'
     __table_args__ = (
         Index('sapacom', 'sapacom'),

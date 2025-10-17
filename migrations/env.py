@@ -22,6 +22,9 @@ from app.models.postgres.document_type_group import DocumentTypeGroup
 from app.models.postgres.approver import Approver
 from app.models.postgres.role_document_type_group import RoleDocumentTypeGroup
 from app.models.postgres.executor import Executor
+from app.models.postgres.hidden_document import HiddenDocument
+from app.models.postgres.travel_funding_source import TravelFundingSource
+from app.models.postgres.notification import Notification
 
 
 config = context.config

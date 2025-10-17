@@ -10,11 +10,8 @@ from app.models.postgres.document import Document
 from app.models.postgres.document_type import DocumentType
 from app.models.postgres.document_type_group import DocumentTypeGroup
 from app.models.postgres.approver import Approver
-from app.db.postgres_connection import PostgresBase, DATABASE_URL
 from app.models.postgres.role_document_type_group import RoleDocumentTypeGroup
 
-from app.db.postgres_connection import async_session_postgres
-from sqlalchemy import select
 
 
 def custom_datetime_formatter(value: datetime) -> str:

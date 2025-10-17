@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dao.mysql import TutorDAO, StudentDAO
 from app.dao.postgres import UserDAO, RoleDao
 from app.models.postgres import User, Role, UserRole
-from app.models.mysql import Student, Tutor
+from app.models.mysql.nitro import Student, Tutor
 
 
 class MigrateUserMysqlToPostgres:

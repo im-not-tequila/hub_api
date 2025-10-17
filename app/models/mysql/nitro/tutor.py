@@ -6,10 +6,10 @@ from sqlalchemy import BigInteger, Date, Double, Index, Integer, SmallInteger, S
 from sqlalchemy.dialects.mysql import MEDIUMBLOB, MEDIUMTEXT, TINYINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class Tutor(MySQLBase):
+class Tutor(NitroBase):
     __tablename__ = 'tutors'
     __table_args__ = (
         Index('IDX_tutors_miletarystatus', 'militarystatus'),

@@ -6,10 +6,10 @@ from sqlalchemy import BigInteger, Date, DateTime, Double, Index, Integer, Small
 from sqlalchemy.dialects.mysql import MEDIUMBLOB, TINYINT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.mysql_connection import MySQLBase
+from app.db.mysql_connection import NitroBase
 
 
-class Student(MySQLBase):
+class Student(NitroBase):
     __tablename__ = 'students'
     __table_args__ = (
         Index('SubGroupID', 'SubGroupID'),

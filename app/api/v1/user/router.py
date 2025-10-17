@@ -1,14 +1,18 @@
+import imghdr
+import datetime
+
 from fastapi import APIRouter, Depends, Query, Response
 from typing import List
 
 from app.models.postgres import User as UserModel
-from app.models.mysql import Tutor as TutorModel, StructuralSubdivision as StructuralSubdivisionModel
+from app.models.mysql.nitro import Tutor as TutorModel, StructuralSubdivision as StructuralSubdivisionModel, Student as StudentModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas import UserResponse
+from app.schemas import UserResponse, BarrierResponse, WorkingHoursResponse, NotificationResponse
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserInfoDAO, UserDAO
 from app.db.session import get_mysql_session, get_postgres_session
 from .schemas import TutorWithPosition
+from app.services.user import UserService
 
 
 router = APIRouter()
@@ -23,9 +27,15 @@ async def get_me(current_user: UserModel = Depends(get_current_user)):
     if current_user.platonus_id:
         async with get_mysql_session() as mysql_session:
             if current_user.is_student:
-                platonus_user = await StudentDAO(mysql_session).get_one_or_none(StudentID=current_user.platonus_id)
+                platonus_user = await StudentDAO(mysql_session).get_one_or_none(
+                    fields=[StudentModel.firstname, StudentModel.lastname, StudentModel.patronymic],
+                    StudentID=current_user.platonus_id
+                )
             else:
-                platonus_user = await TutorDAO(mysql_session).get_one_or_none(TutorID=current_user.platonus_id)
+                platonus_user = await TutorDAO(mysql_session).get_one_or_none(
+                    fields=[TutorModel.firstname, TutorModel.lastname, TutorModel.patronymic],
+                    TutorID=current_user.platonus_id
+                )
 
             firstname = platonus_user.firstname
             lastname = platonus_user.lastname
@@ -93,9 +103,52 @@ async def avatar(
         user = await UserDAO(postgres_session).get_by_id(user_id)
 
     async with get_mysql_session() as mysql_session:
-        tutor = await TutorDAO(mysql_session).get_one_or_none(TutorID=user.platonus_id)
+        tutor = await TutorDAO(mysql_session).get_one_or_none(
+            fields=[TutorModel.photo],
+            TutorID=user.platonus_id
+        )
 
     if not tutor.photo or tutor.photo == b"0":
-        return Response(status_code=404)
+        return Response(status_code=204)
 
-    return Response(content=tutor.photo, media_type="image/jpeg")
+    image_type = imghdr.what(None, h=tutor.photo)
+
+    if image_type not in {"jpeg", "png", "gif", "bmp", "webp"}:
+        return Response(status_code=400, content="Invalid image data")
+
+    return Response(content=tutor.photo, media_type=f"image/{image_type}")
+
+
+@router.get(
+    path="/visit-history/barrier",
+    response_model=List[BarrierResponse]
+)
+async def visit_history_barrier(
+    target_date: datetime.date = Query(..., description="Дата в формате YYYY-MM-DD"),
+    current_user: UserModel = Depends(get_current_user)
+):
+    return await UserService().visit_history_barrier(current_user, target_date)
+
+
+@router.get(
+    path="/visit-history/working-hours",
+    response_model=List[WorkingHoursResponse]
+)
+async def visit_history_working_hours(
+    start_date: datetime.date = Query(..., description="Дата в формате YYYY-MM-DD"),
+    finish_date: datetime.date = Query(..., description="Дата в формате YYYY-MM-DD"),
+    current_user: UserModel = Depends(get_current_user)
+):
+    return await UserService().visit_history_working_hours(current_user, start_date, finish_date)
+
+
+@router.get(
+    path="/notifications",
+    response_model=List[NotificationResponse]
+)
+async def notifications(
+    current_user: UserModel = Depends(get_current_user),
+    limit: int = 50
+):
+    return await UserService().notifications(current_user.id, limit)
+
