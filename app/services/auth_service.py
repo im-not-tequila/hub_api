@@ -78,12 +78,12 @@ class AuthService:
             async with get_mysql_session() as mysql_session:
                 tutor_dao = TutorDAO(mysql_session)
                 user_dao = UserDAO(postgres_session)
-                tutor = await tutor_dao.get_by_platonus_credentials(login, password)
+                tutor_id = await tutor_dao.get_by_platonus_credentials(login, password)
                 user = None
 
-                if tutor:
+                if tutor_id:
                     user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
-                        tutor_id=tutor.TutorID
+                        tutor_id=tutor_id
                     )
                 else:
                     student_dao = StudentDAO(mysql_session)

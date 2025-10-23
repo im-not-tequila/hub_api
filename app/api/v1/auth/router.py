@@ -107,3 +107,13 @@ async def refresh_token(request: Request, response: Response):
         access_token=new_access_token,
         token_type="Bearer",
     )
+
+
+@router.post(
+    path="/logout"
+)
+def logout(response: Response):
+    response.delete_cookie(key="refresh_token")
+    response.delete_cookie(key="access_token")
+
+    return {"message": "Logged out"}
