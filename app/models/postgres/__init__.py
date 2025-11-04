@@ -11,6 +11,8 @@ from .executor import Executor, ExecutorStatus
 from .hidden_document import HiddenDocument
 from .travel_funding_source import TravelFundingSource
 from .notification import Notification
+from .sample_document_group import SampleDocumentGroup
+from .sample_document import SampleDocument
 
 
 __all__ = [
@@ -29,5 +31,7 @@ __all__ = [
     'ExecutorStatus',
     'HiddenDocument',
     'TravelFundingSource',
-    'Notification'
+    'Notification',
+    'SampleDocumentGroup',
+    'SampleDocument'
 ]

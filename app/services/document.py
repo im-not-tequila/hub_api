@@ -1,17 +1,19 @@
 import aiofiles
 import base64
+import asyncio
+
+from fastapi.responses import FileResponse
+from fastapi import HTTPException, UploadFile
 
 from datetime import datetime
 from typing import List
 
-from fastapi import HTTPException, UploadFile
-
 from app.dao.mysql import TutorDAO, StudentDAO
 from app.services.ncanode import NCANode
-from app.services.notification import send_notification
+from app.services.notification import NotificationService
 from app.core.settings import get_settings
 from app.db.session import get_postgres_session, get_mysql_session
-from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO, HiddenDocumentDAO
+from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO, HiddenDocumentDAO, UserInfoDAO, SampleDocumentDAO
 from app.services.sigex import Sigex
 
 from app.schemas import (
@@ -21,7 +23,8 @@ from app.schemas import (
     DocumentType,
     OutgoingResponse,
     Person,
-    ApproverPerson
+    ApproverPerson,
+    SampleDocument
 )
 
 from app.models.postgres import (
@@ -31,10 +34,11 @@ from app.models.postgres import (
     Executor as ExecutorModel,
     DocumentStatus,
     ApproverStatus,
-    ExecutorStatus
+    ExecutorStatus,
+    SampleDocument as SampleDocumentModel
 )
 
-from app.models.mysql.nitro import Tutor as TutorModel
+from app.models.mysql.nitro import Tutor as TutorModel, Student as StudentModel
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 
 
@@ -279,7 +283,16 @@ class DocumentService:
         user_ecp_info = NCANode().cms_verify(data.signature, base64_string)
 
         if not user_ecp_info:
-            raise HTTPException(status_code=400, detail="Invalid signature")
+            raise HTTPException(status_code=400, detail={"code": "INVALID_SIGNATURE", "message": "Invalid signature"})
+
+        async with get_mysql_session() as mysql_session:
+            tutor: TutorModel = await TutorDAO(mysql_session).get_one_or_none(TutorID=current_user.platonus_id)
+
+            if user_ecp_info.iin_number != tutor.iinplt:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "IIN_MISMATCH","message": "The IIN used to sign the document does not match the IIN you are logged in with."}
+                )
 
         sigex = Sigex()
         sigex_data = await sigex.register_document(
@@ -298,7 +311,13 @@ class DocumentService:
                 )
 
                 if recipient_user is None:
-                    raise HTTPException(status_code=400, detail="Recipient user not found")
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "code": "RECIPIENT_NOT_FOUND",
+                            "message": "Recipient user not found"
+                        },
+                    )
 
                 document = await DocumentDAO(postgres_session).add(
                     author_id=current_user.id,
@@ -314,7 +333,38 @@ class DocumentService:
                     is_recipient=True
                 )
 
-                await send_notification(recipient_user.id, 'Вам отправлен документ')
+                if current_user.platonus_id:
+                    if current_user.is_student:
+                        current_user_data = await StudentDAO(mysql_session).get_one_or_none(
+                            fields=[StudentModel.firstname, StudentModel.lastname, StudentModel.patronymic],
+                            student_id=current_user.platonus_id
+                        )
+                    else:
+                        current_user_data = await TutorDAO(mysql_session).get_one_or_none(
+                            fields=[TutorModel.firstname, TutorModel.lastname, TutorModel.patronymic],
+                            TutorID=current_user.platonus_id
+                        )
+                else:
+                    current_user_data = await UserInfoDAO(postgres_session).get_one_or_none(
+                        user_id=current_user.id
+                    )
+
+                first_initial = f"{current_user_data.firstname[0].upper()}."
+                patronymic_initial = f" {current_user_data.patronymic[0].upper()}." if current_user_data.patronymic else ""
+                shortname = f"{current_user_data.lastname} {first_initial}{patronymic_initial}".strip()
+
+                await NotificationService.send_notification(
+                    recipient_user_id=recipient_user.id,
+                    sender_user_id=current_user.id,
+                    sender_name=shortname,
+                    title='Новый документ на подпись',
+                    message=f'{data.document_name}',
+                    other_data={
+                        'type': 'incoming_document',
+                        'document_id': document.id,
+                    }
+                )
+
                 await postgres_session.refresh(document, attribute_names=["author_user"])
                 author_platonus_id = document.author_user.platonus_id
 
@@ -477,9 +527,15 @@ class DocumentService:
                 )
 
                 if executors:
-                    await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.ON_EXECUTION)
+                    await DocumentDAO(postgres_session).update(
+                        filters={DocumentModel.id: document_id},
+                        values={DocumentModel.status: DocumentStatus.ON_EXECUTION}
+                    )
                 else:
-                    await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.SIGNED)
+                    await DocumentDAO(postgres_session).update(
+                        filters={DocumentModel.id: document_id},
+                        values={DocumentModel.status: DocumentStatus.SIGNED}
+                    )
 
         await self._save_signature_to_file(document, user.platonus_id, user_signature, False)
         await self._save_signature_to_file(document, user.platonus_id, sigex_signature, True)
@@ -496,7 +552,10 @@ class DocumentService:
             if approver is None:
                 raise HTTPException(status_code=404, detail="Approver not found")
 
-            await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.REJECTED)
+            await DocumentDAO(postgres_session).update(
+                filters={DocumentModel.id: document_id},
+                values={DocumentModel.status: DocumentStatus.REJECTED}
+            )
 
     @staticmethod
     async def execute(document_id: int, executor_id: int):
@@ -529,7 +588,10 @@ class DocumentService:
                     break
 
             if is_all_completed:
-                await DocumentDAO(postgres_session).update(document_id, status=DocumentStatus.EXECUTED)
+                await DocumentDAO(postgres_session).update(
+                    filters={DocumentModel.id: document_id},
+                    values={DocumentModel.status: DocumentStatus.EXECUTED}
+                )
 
     @staticmethod
     async def revoke(user_id:int, document_id: int):
@@ -540,8 +602,8 @@ class DocumentService:
                 raise HTTPException(status_code=403, detail="You are not the author of this document")
 
             await DocumentDAO(postgres_session).update(
-                obj_id=document_id,
-                status=DocumentStatus.REVOKED
+                filters={DocumentModel.id: document_id},
+                values={DocumentModel.status: DocumentStatus.REVOKED}
             )
 
     @staticmethod
@@ -578,3 +640,81 @@ class DocumentService:
                 raise HTTPException(status_code=404, detail="Document not found")
 
             return document_path
+
+    @staticmethod
+    async def samples():
+        async with get_postgres_session() as postgres_session:
+            sample_documents = await SampleDocumentDAO(postgres_session).get_all_filtered(
+                filters={SampleDocumentModel.is_active: True}
+            )
+
+            result = [
+                SampleDocument(
+                    id=doc.id,
+                    name=doc.name_ru,  # или name_kz — зависит от языка, который ты хочешь
+                    group=doc.sample_document_group.name_ru,  # если в группе есть поле name_ru
+                    group_id=doc.sample_document_group_id
+                )
+                for doc in sample_documents
+            ]
+            return result
+
+    @staticmethod
+    async def sample_pdf(sample_document_id: int):
+        base_dir = get_settings().STORAGE_DIRECTORY / "sample_documents"
+
+        # пути к DOCX и PDF
+        document_path = base_dir / f"{sample_document_id}.docx"
+        pdf_path = base_dir / f"{sample_document_id}.pdf"
+
+        # если PDF уже есть — сразу возвращаем
+        if pdf_path.exists():
+            return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
+
+        # если DOCX отсутствует — ошибка
+        if not document_path.exists():
+            raise HTTPException(status_code=404, detail="DOCX файл не найден")
+
+        # конвертация docx → pdf через libreoffice (в ту же директорию)
+        cmd = [
+            "libreoffice",
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", str(base_dir),
+            str(document_path)
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ошибка конвертации DOCX в PDF: {stderr.decode()}"
+            )
+
+        # после конвертации проверяем, что PDF появился
+        if not pdf_path.exists():
+            raise HTTPException(status_code=500, detail="Не удалось создать PDF-файл")
+
+        return FileResponse(pdf_path, media_type="application/pdf", filename=pdf_path.name)
+
+    @staticmethod
+    async def sample_download(sample_document_id: int):
+        base_dir = get_settings().STORAGE_DIRECTORY / "sample_documents"
+        document_path = base_dir / f"{sample_document_id}.docx"
+
+        if not document_path.exists():
+            raise HTTPException(status_code=404, detail="DOCX файл не найден")
+
+        return FileResponse(
+            path=document_path,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=document_path.name
+        )
+

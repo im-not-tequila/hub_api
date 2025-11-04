@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, asc, desc, update as sa_update
 from sqlalchemy.orm import load_only
 from typing import Generic, TypeVar, Type, Sequence
 
@@ -24,25 +24,48 @@ class BaseDAO(Generic[ModelType]):
 
         return result.scalars().all()
 
-    async def get_all_filtered(self, filters: dict = None, limit: int = 100, offset: int = 0):
+    async def get_all_filtered(
+        self,
+        filters: dict = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str | None = None,  # пример: "id:desc" или "created_at:asc"
+    ):
         stmt = select(self.model)
 
+        # Фильтрация
         if filters:
             for field, values in filters.items():
-                # column = getattr(self.model, field)
+                # column = getattr(self.model, field, None)
+                # if column is None:
+                #     continue  # игнорируем несуществующие поля
 
                 if isinstance(values, list):
                     stmt = stmt.where(field.in_(values))
                 else:
                     stmt = stmt.where(field == values)
 
-        stmt = stmt.limit(limit).offset(offset)
-        print()
-        print(stmt)
-        print()
-        print('11111111111111111111111')
-        result = await self.session.execute(stmt)
+        # Сортировка
+        if order_by:
+            try:
+                field, direction = order_by.split(":")
+                column = getattr(self.model, field)
+                if direction.lower() == "desc":
+                    stmt = stmt.order_by(desc(column))
+                else:
+                    stmt = stmt.order_by(asc(column))
+            except Exception:
+                # fallback: сортировка по id desc
+                stmt = stmt.order_by(desc(self.model.id))
+        else:
+            # сортировка по умолчанию
+            stmt = stmt.order_by(desc(self.model.id))
 
+        # Пагинация
+        stmt = stmt.limit(limit).offset(offset)
+
+        # Выполнение запроса
+        result = await self.session.execute(stmt)
         return result.scalars().all()
 
     async def get_one_or_none(self, fields: Sequence | None = None, **filter_by) -> ModelType | None:
@@ -115,31 +138,48 @@ class PostgresDao(BaseDAO):
 
         return new_instances
 
-    async def update(self, obj_id: int, **values):
+    async def update(self, filters: dict, values: dict):
         """
-        Асинхронно обновляет существующий экземпляр модели по его ID.
+        Асинхронно обновляет один или несколько экземпляров модели по фильтрам.
 
         Аргументы:
-            obj_id: ID объекта, который нужно обновить.
-            **values: Именованные параметры для обновления полей модели.
+            filters: dict с SQLAlchemy условиями (например: {Model.id: 1, Model.user_id: 2})
+            values: dict с новыми значениями (например: {Model.is_read: True})
 
         Возвращает:
-            Обновленный экземпляр модели или None, если объект не найден.
+            Список обновлённых экземпляров модели.
         """
-        stmt = select(self.model).where(self.model.id == obj_id)
-        result = await self.session.execute(stmt)
-        instance = result.scalar_one_or_none()
 
-        if not instance:
-            return None
+        # --- SELECT: найти подходящие записи ---
+        stmt_select = select(self.model)
 
-        for key, value in values.items():
-            setattr(instance, key, value)
+        if filters:
+            for field, val in filters.items():
+                column = getattr(self.model, field.key if hasattr(field, "key") else field)
+                if isinstance(val, list):
+                    stmt_select = stmt_select.where(column.in_(val))
+                else:
+                    stmt_select = stmt_select.where(column == val)
 
+        result = await self.session.execute(stmt_select)
+        instances = result.scalars().all()
+
+        if not instances:
+            return []
+
+        # --- UPDATE: обновляем найденные записи ---
+        ids = [obj.id for obj in instances]
+        stmt_update = (
+            sa_update(self.model)
+            .where(self.model.id.in_(ids))
+            .values({field.key: val for field, val in values.items()})
+            .returning(self.model)
+        )
+
+        result = await self.session.execute(stmt_update)
         await self.session.commit()
-        await self.session.refresh(instance)
 
-        return instance
+        return result.scalars().all()
 
     async def bulk_add(self, objects_data: list[dict]):
         """
@@ -161,29 +201,4 @@ class PostgresDao(BaseDAO):
             await self.session.refresh(instance)
 
         return new_instances
-    
-    async def update(self, obj_id: int, **values):
-        """
-        Асинхронно обновляет существующий экземпляр модели по его ID.
 
-        Аргументы:
-            obj_id: ID объекта, который нужно обновить.
-            **values: Именованные параметры для обновления полей модели.
-
-        Возвращает:
-            Обновленный экземпляр модели или None, если объект не найден.
-        """
-        stmt = select(self.model).where(self.model.id == obj_id)
-        result = await self.session.execute(stmt)
-        instance = result.scalar_one_or_none()
-
-        if not instance:
-            return None
-
-        for key, value in values.items():
-            setattr(instance, key, value)
-
-        await self.session.commit()
-        await self.session.refresh(instance)
-
-        return instance

@@ -11,4 +11,4 @@ api_router.include_router(auth_router, prefix="/v1/auth", tags=["Auth"])
 api_router.include_router(user_router, prefix="/v1/user", tags=["User"])
 api_router.include_router(docs_router, prefix="/v1/doc", tags=["Document"])
 
-api_router.include_router(notification_router, tags=["Notification"])
+api_router.include_router(notification_router, prefix="/v1/notifications", tags=["Notification"])

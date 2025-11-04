@@ -62,6 +62,12 @@ class ApproverPerson(Person):
     pass
 
 
+class SampleDocument(BaseModel):
+    id: int
+    name: str
+    group: str
+    group_id: int
+
 class OutgoingResponse(BaseModel):
     id: int
     name: str

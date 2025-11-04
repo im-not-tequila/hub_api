@@ -72,8 +72,8 @@ class MigrateUserMysqlToPostgres:
 
         if user and bin_number:
             await UserDAO(self.postgres_session).update(
-                obj_id=user.id,
-                bin_number=bin_number,
+                filters={User.id: user.id},
+                values={User.bin_number: bin_number,}
             )
 
             await UserDAO(self.postgres_session).add_roles(

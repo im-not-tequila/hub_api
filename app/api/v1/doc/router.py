@@ -7,7 +7,7 @@ from typing import List
 
 from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas import (DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest)
+from app.schemas import (DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, SampleDocument)
 from app.services.document import DocumentService
 
 
@@ -78,13 +78,7 @@ async def upload(
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
 ):
-    try:
-        approver_user_ids_list = json.loads(approver_user_ids)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON for approver_user_ids"
-        )
+    approver_user_ids_list = json.loads(approver_user_ids)
 
     data = DocumentUploadRequest(
         document_name=document_name,
@@ -200,3 +194,38 @@ async def pdf(
     file_path = await DocumentService().pdf(document_id)
 
     return FileResponse(file_path, media_type="application/pdf", filename="document.pdf")
+
+
+@router.get(
+    path="/samples",
+    response_model=List[SampleDocument]
+)
+async def samples(
+        lang: str = Query('ru', description="Язык: ru, kz, en"),
+        current_user: UserModel = Depends(get_current_user)
+):
+    return await DocumentService().samples()
+
+
+@router.get(
+    path="/sample/{sample_document_id}/pdf",
+    response_model=List[SampleDocument]
+)
+async def sample_pdf(
+        sample_document_id: int,
+        current_user: UserModel = Depends(get_current_user)
+):
+    return await DocumentService().sample_pdf(sample_document_id)
+
+
+@router.get(
+    path="/sample/{sample_document_id}/download",
+    response_model=List[SampleDocument],
+    summary="Скачать шаблон DOCX",
+)
+async def sample_pdf(
+        sample_document_id: int,
+        current_user: UserModel = Depends(get_current_user)
+):
+    print('111111111111111111111')
+    return await DocumentService().sample_download(sample_document_id)

@@ -7,6 +7,7 @@ from .executor import ExecutorDAO
 from .hidden_document import HiddenDocumentDAO
 from .travel_funding_source import TravelFundingSourceDAO
 from .notification import NotificationDAO
+from .sample_document import SampleDocumentDAO
 
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     'ExecutorDAO',
     'HiddenDocumentDAO',
     'TravelFundingSourceDAO',
-    'NotificationDAO'
+    'NotificationDAO',
+    'SampleDocumentDAO'
 ]

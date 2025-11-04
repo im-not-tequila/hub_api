@@ -1,15 +1,71 @@
 import datetime
 from fastapi import HTTPException
 
-from app.dao.postgres import NotificationDAO
-from app.db.session import get_postgres_session, get_mysql_session
-from app.dao.mysql import TutorDAO, PersontabelDAO
+from app.db.session import get_mysql_session, get_postgres_session
+from app.dao.mysql import TutorDAO, PersontabelDAO, StudentDAO
+from app.dao.postgres import UserInfoDAO
 from app.models.postgres import (
-    User as UserModel,
+    User as UserModel
 )
+from app.models.mysql.nitro import (
+    Tutor as TutorModel,
+    Student as StudentModel,
+    StructuralSubdivision as StructuralSubdivisionModel
+)
+from app.schemas import UserResponse
 
 
 class UserService:
+    async def user_data(self, current_user: UserModel) -> UserResponse:
+        if current_user.platonus_id:
+            async with get_mysql_session() as mysql_session:
+                if current_user.is_student:
+                    platonus_user = await StudentDAO(mysql_session).get_one_or_none(
+                        fields=[StudentModel.firstname, StudentModel.lastname, StudentModel.patronymic],
+                        StudentID=current_user.platonus_id
+                    )
+
+                    structural_subdivision = 'Студент'
+                else:
+                    platonus_user = await TutorDAO(mysql_session).get_one_or_none(
+                        fields=[TutorModel.firstname, TutorModel.lastname, TutorModel.patronymic],
+                        TutorID=current_user.platonus_id
+                    )
+
+                    rows = await TutorDAO(mysql_session).get_tutors_and_position(
+                        filters={
+                            StructuralSubdivisionModel.subdivision_type: [0, 1, 2, 3],
+                            TutorModel.TutorID: current_user.platonus_id,
+                        }
+                    )
+
+                    if rows:
+                        structural_subdivision = rows[0][1].nameru  # второй элемент первого кортежа
+                    else:
+                        structural_subdivision = 'Сотрудник университета'
+
+                firstname = platonus_user.firstname
+                lastname = platonus_user.lastname
+                patronymic = platonus_user.patronymic
+        else:
+            async with get_postgres_session() as postgres_session:
+                user_info = await UserInfoDAO(postgres_session).get_one_or_none(user_id=current_user.id)
+                firstname = user_info.firstname
+                lastname = user_info.lastname
+                patronymic = user_info.patronymic
+
+                structural_subdivision = 'Гость'
+
+        result_user = UserResponse(
+            id=current_user.id,
+            firstname=firstname,
+            lastname=lastname,
+            patronymic=patronymic,
+            structural_subdivision=structural_subdivision
+        )
+
+        return result_user
+
     async def visit_history_barrier(self, user: UserModel, target_date: datetime.date):
         if user.is_student:
             raise HTTPException(status_code=403, detail="Access denied for students")
@@ -34,18 +90,5 @@ class UserService:
 
             return working_hours
 
-    async def notifications(self, user_id: int, limit: int = 50):
-        async with get_postgres_session() as postgres_session:
-            notifications = await NotificationDAO(postgres_session).get_all_filtered(
-                filters={
-                    "user_id": user_id,
-                },
-                limit=limit,
-            )
-            print()
-            print(user_id)
-            print('111111111111111111111111111111111111111111111')
-            print(notifications)
 
-            return notifications
 

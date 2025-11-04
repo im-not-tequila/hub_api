@@ -6,16 +6,23 @@ from fastapi import HTTPException
 from datetime import datetime, timedelta, UTC
 from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError
+from weasyprint.css.validation.properties import position
 
 from app.core.settings import get_settings
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 from app.dao.mysql import StudentDAO, TutorDAO
 from app.dao.postgres import UserDAO, UserInfoDAO, RoleDao
 from app.models.postgres import User as UserModel
-from app.models.mysql.nitro import Tutor as TutorModel, Student as StudentModel
+
+from app.models.mysql.nitro import (
+    Tutor as TutorModel,
+    Student as StudentModel
+)
+
 from app.db.session import get_postgres_session, get_mysql_session, redis_client
 from app.schemas import NcalayerVerifyRequest, UserEcpInfo, Tokens, UserResponse, PlatonusLoginRequest
 from app.services.ncanode import NCANode
+from app.services.user import UserService
 
 
 settings = get_settings()
@@ -170,19 +177,9 @@ class AuthService:
         if not user_ecp_info:
             raise HTTPException(status_code=400, detail="Invalid signature")
 
-        user_model = await self._authenticate_by_ecp(user_ecp_info)
-        tokens = self._create_tokens(user_model)
-
-        firstname = user_ecp_info.firstname
-        lastname = user_ecp_info.lastname
-        patronymic = user_ecp_info.patronymic
-
-        result_user = UserResponse(
-            id=user_model.id,
-            firstname=firstname,
-            lastname=lastname,
-            patronymic=patronymic,
-        )
+        current_user = await self._authenticate_by_ecp(user_ecp_info)
+        tokens = self._create_tokens(current_user)
+        result_user = await UserService().user_data(current_user)
 
         return tokens, result_user
 
@@ -205,38 +202,16 @@ class AuthService:
 
             return new_access_token
 
-    async def platonus_login(self, data: PlatonusLoginRequest):
+    async def platonus_login(self, data: PlatonusLoginRequest) -> tuple[Tokens, UserResponse]:
         if not data.login.strip() or not data.password.strip():
             raise HTTPException(status_code=400, detail="Login or password is empty")
 
-        user_model = await self._authenticate_by_platonus(data.login, data.password)
+        current_user = await self._authenticate_by_platonus(data.login, data.password)
 
-        if user_model is None:
+        if current_user is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        tokens = self._create_tokens(user_model)
-
-        async with get_mysql_session() as mysql_session:
-            if user_model.is_student:
-                platonus_user = await StudentDAO(mysql_session).get_one_or_none(
-                    fields=[StudentModel.firstname, StudentModel.lastname, StudentModel.patronymic],
-                    StudentID=user_model.platonus_id
-                )
-            else:
-                platonus_user = await TutorDAO(mysql_session).get_one_or_none(
-                    fields=[TutorModel.firstname, TutorModel.lastname, TutorModel.patronymic],
-                    TutorID=user_model.platonus_id
-                )
-
-            firstname = platonus_user.firstname
-            lastname = platonus_user.lastname
-            patronymic = platonus_user.patronymic
-
-        result_user = UserResponse(
-            id=user_model.id,
-            firstname=firstname,
-            lastname=lastname,
-            patronymic=patronymic,
-        )
+        tokens = self._create_tokens(current_user)
+        result_user = await UserService().user_data(current_user)
 
         return tokens, result_user

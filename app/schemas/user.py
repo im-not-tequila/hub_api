@@ -8,6 +8,7 @@ class UserResponse(BaseModel):
     id: int
     firstname: str
     lastname: str
+    structural_subdivision: str
     patronymic: Optional[str] = None
     shortname: str = Field(default="")
 
@@ -52,7 +53,10 @@ class WorkingHoursResponse(BaseModel):
 
 class NotificationResponse(BaseModel):
     id: int
+    sender_user_id: int
+    sender_name: str
+    title: str
     message: str
-    link: str | None = None
     is_read: bool
+    other_data: dict | None
     created_at: datetime.datetime

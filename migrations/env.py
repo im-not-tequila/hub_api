@@ -25,6 +25,8 @@ from app.models.postgres.executor import Executor
 from app.models.postgres.hidden_document import HiddenDocument
 from app.models.postgres.travel_funding_source import TravelFundingSource
 from app.models.postgres.notification import Notification
+from app.models.postgres.sample_document_group import SampleDocumentGroup
+from app.models.postgres.sample_document import SampleDocument
 
 
 config = context.config
