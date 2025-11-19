@@ -223,9 +223,8 @@ async def sample_pdf(
     response_model=List[SampleDocument],
     summary="Скачать шаблон DOCX",
 )
-async def sample_pdf(
+async def sample_download(
         sample_document_id: int,
         current_user: UserModel = Depends(get_current_user)
 ):
-    print('111111111111111111111')
     return await DocumentService().sample_download(sample_document_id)

@@ -41,6 +41,8 @@ class UserService:
 
                     if rows:
                         structural_subdivision = rows[0][1].nameru  # второй элемент первого кортежа
+                        print('00000000000000000000000000000')
+                        print(rows[0][1])
                     else:
                         structural_subdivision = 'Сотрудник университета'
 

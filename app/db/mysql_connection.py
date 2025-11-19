@@ -19,9 +19,11 @@ if settings.ssh_enabled:
 
 DATABASE_URL_NITRO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_nitro}"
 DATABASE_URL_PERCO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_perco}"
+DATABASE_URL_NITROSGU = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_perco}"
 
 engine_mysql_nitro = create_async_engine(DATABASE_URL_NITRO, echo=True)
 engine_mysql_perco = create_async_engine(DATABASE_URL_PERCO, echo=True)
+engine_mysql_nitrosgu = create_async_engine(DATABASE_URL_NITROSGU, echo=True)
 
 async_session_mysql_nitro = async_sessionmaker(
     engine_mysql_nitro, expire_on_commit=False
@@ -31,8 +33,18 @@ async_session_mysql_perco = async_sessionmaker(
     engine_mysql_perco, expire_on_commit=False
 )
 
+async_session_mysql_nitrosgu = async_sessionmaker(
+    engine_mysql_nitrosgu, expire_on_commit=False
+)
+
+
 class NitroBase(DeclarativeBase):
     pass
 
+
 class PercoBase(DeclarativeBase):
+    pass
+
+
+class NitrosguBase(DeclarativeBase):
     pass

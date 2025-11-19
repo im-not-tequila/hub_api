@@ -12,6 +12,7 @@ class MigrateUserMysqlToPostgres:
         self.postgres_session = postgres_session
 
     async def _get_tutor_roles(self, tutor: Tutor) -> list[Role]:
+        print('2222222222222222222222222222222222')
         role_ids = [2, 11] # Сотрудник университета, Физическое лицо
 
         tutor_and_position = await TutorDAO(self.mysql_session).get_tutors_and_position(
@@ -81,9 +82,6 @@ class MigrateUserMysqlToPostgres:
                 role_ids=[12] # Юридическое лицо
             )
 
-        if user:
-            return user
-
         tutor: Tutor = await TutorDAO(self.mysql_session).get_one_or_none(
             TutorID=tutor_id,
             has_access=1,
@@ -95,11 +93,15 @@ class MigrateUserMysqlToPostgres:
             roles = await self._get_tutor_roles(tutor)
             user_roles = [UserRole(role_id=role.id) for role in roles]
 
-            return await UserDAO(self.postgres_session).add(
-                platonus_id=tutor.TutorID,
-                is_student=False,
-                user_roles=user_roles
-            )
+            if user is None:
+                return await UserDAO(self.postgres_session).add(
+                    platonus_id=tutor.TutorID,
+                    is_student=False,
+                    user_roles=user_roles
+                )
+
+        if user:
+            return user
 
         return None
 

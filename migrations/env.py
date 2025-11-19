@@ -27,6 +27,7 @@ from app.models.postgres.travel_funding_source import TravelFundingSource
 from app.models.postgres.notification import Notification
 from app.models.postgres.sample_document_group import SampleDocumentGroup
 from app.models.postgres.sample_document import SampleDocument
+from app.models.postgres.custom_document_templates import CustomDocumentTemplate
 
 
 config = context.config

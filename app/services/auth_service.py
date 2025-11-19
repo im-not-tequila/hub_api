@@ -6,7 +6,6 @@ from fastapi import HTTPException
 from datetime import datetime, timedelta, UTC
 from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError
-from weasyprint.css.validation.properties import position
 
 from app.core.settings import get_settings
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
