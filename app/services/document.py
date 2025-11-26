@@ -380,7 +380,9 @@ class DocumentService:
         patronymic_initial = f" {current_user_data.patronymic[0].upper()}." if current_user_data.patronymic else ""
         shortname = f"{current_user_data.lastname} {first_initial}{patronymic_initial}".strip()
 
-        await NotificationService.send_notification(
+        await NotificationService(
+            session_postgres=self.session_postgres
+        ).send_notification(
             recipient_user_id=recipient_user.id,
             sender_user_id=current_user.id,
             sender_name=shortname,

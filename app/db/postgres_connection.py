@@ -14,7 +14,7 @@ database = settings.PG_DATABASE
 
 DATABASE_URL = f'postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}'
 
-engine_postgres = create_async_engine(DATABASE_URL, echo=True)
+engine_postgres = create_async_engine(DATABASE_URL, echo=False)
 
 async_session_postgres = async_sessionmaker(
     engine_postgres, expire_on_commit=False
