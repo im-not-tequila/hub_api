@@ -18,13 +18,15 @@ router = APIRouter(tags=["notifications"])
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, refresh_token: Optional[str] = Cookie(None)):
+async def websocket_endpoint(
+        websocket: WebSocket,
+        refresh_token: Optional[str] = Cookie(None),
+        user: UserModel = Depends(get_current_user)
+):
     # ✅ токен приходит из cookie
     if not refresh_token:
         await websocket.close(code=1008)
         return
-
-    user = await get_current_user(websocket)
 
     if not user:
         await websocket.close(code=1008)

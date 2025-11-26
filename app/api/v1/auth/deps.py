@@ -6,12 +6,13 @@ from app.db.session import get_postgres_session
 from app.dao.postgres import UserDAO
 from app.models.postgres.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import HTTPConnection
 
 settings = get_settings()
 
 
 async def get_current_user(
-        request: Request,
+        request: HTTPConnection,
         session_postgres: AsyncSession = Depends(get_postgres_session)
 ) -> User:
     """
