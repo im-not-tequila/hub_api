@@ -4,113 +4,117 @@ import locale
 import pandas as pd
 from fastapi import HTTPException
 
-from app.db.session import get_mysql_session
 from app.dao.mysql import WorkTabelDAO, StructuralSubdivisionDAO
 from app.models.postgres import User
-from app.models.mysql.nitro import StructuralSubdivision
+from app.models.mysql.nitro import StructuralSubdivision as StructuralSubdivisionModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class WorkTabelService:
+    def __init__(self, session_nitro: AsyncSession):
+        self.session_nitro = session_nitro
+
     async def work_tabel(self, year: int, month: int, current_user: User):
-        async with get_mysql_session() as mysql_session:
-            data = await StructuralSubdivisionDAO(mysql_session).get_one_or_none(
-                fields=[StructuralSubdivision.id],
-                dean=current_user.platonus_id
-            )
-
-            subdivision_id = data.id
-
-            if not subdivision_id:
-                raise HTTPException(status_code=404, detail="No subdivision found for this user")
-
-            # === 1. Получаем данные ===
-            dao = WorkTabelDAO(mysql_session)
-            tutors_by_subdivision = await dao.get_tutors_by_subdivision(subdivision_id,  year, month)
-
-            if not tutors_by_subdivision:
-                raise HTTPException(status_code=404, detail="No tutors found for this subdivision")
-
-            tutor_ids = list({row["TutorID"] for row in tutors_by_subdivision})
-
-            dean_ids = list({row["dean"] for row in tutors_by_subdivision})
-
-            if current_user.platonus_id not in dean_ids:
-                raise HTTPException(status_code=403, detail="Access denied")
-
-            hours_per_day = await dao.get_hours_sum_per_day(subdivision_id, tutor_ids, year, month)
-
-            # === Маппинг типов ===
-            fff = {
-                '1000': "ІС",
-                '2000': "ЕД",
-                '3000': "ЭД",
-                '4000': "ДД",
-                '5000': "ЖС",
-                '9000': "БЛ",
-                '9999': "ПР",
+        data = await StructuralSubdivisionDAO(self.session_nitro).get_one_or_none(
+            fields=[StructuralSubdivisionModel.id],
+            filters={
+                StructuralSubdivisionModel.dean: current_user.platonus_id,
             }
+        )
 
-            # === Подмена часов на коды типа ===
-            for row in hours_per_day:
-                t = row.get("tabel_type")
+        subdivision_id = data.id
 
-                if t in fff:
-                    row["hour_sum"] = fff[t]
+        if not subdivision_id:
+            raise HTTPException(status_code=404, detail="No subdivision found for this user")
 
-            # === 2. В DataFrame ===
-            df_tutors = pd.DataFrame(tutors_by_subdivision)
-            df_tabels = pd.DataFrame(hours_per_day)
+        # === 1. Получаем данные ===
+        dao = WorkTabelDAO(self.session_nitro)
+        tutors_by_subdivision = await dao.get_tutors_by_subdivision(subdivision_id,  year, month)
 
-            if df_tabels.empty:
-                # Нет записей по табелю
-                return []
+        if not tutors_by_subdivision:
+            raise HTTPException(status_code=404, detail="No tutors found for this subdivision")
 
-            # === 3. Пивот по дням ===
-            pivot = (
-                df_tabels
-                .pivot_table(
-                    index="tutor_id",
-                    columns="tabel_day",
-                    values="hour_sum",
-                    aggfunc="sum",
-                    fill_value=0
-                )
-                .reset_index()
+        tutor_ids = list({row["TutorID"] for row in tutors_by_subdivision})
+
+        dean_ids = list({row["dean"] for row in tutors_by_subdivision})
+
+        if current_user.platonus_id not in dean_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        hours_per_day = await dao.get_hours_sum_per_day(subdivision_id, tutor_ids, year, month)
+
+        # === Маппинг типов ===
+        fff = {
+            '1000': "ІС",
+            '2000': "ЕД",
+            '3000': "ЭД",
+            '4000': "ДД",
+            '5000': "ЖС",
+            '9000': "БЛ",
+            '9999': "ПР",
+        }
+
+        # === Подмена часов на коды типа ===
+        for row in hours_per_day:
+            t = row.get("tabel_type")
+
+            if t in fff:
+                row["hour_sum"] = fff[t]
+
+        # === 2. В DataFrame ===
+        df_tutors = pd.DataFrame(tutors_by_subdivision)
+        df_tabels = pd.DataFrame(hours_per_day)
+
+        if df_tabels.empty:
+            # Нет записей по табелю
+            return []
+
+        # === 3. Пивот по дням ===
+        pivot = (
+            df_tabels
+            .pivot_table(
+                index="tutor_id",
+                columns="tabel_day",
+                values="hour_sum",
+                aggfunc="sum",
+                fill_value=0
             )
+            .reset_index()
+        )
 
-            # === 4. Объединяем с данными о преподавателях ===
-            merged = pd.merge(
-                pivot,
-                df_tutors,
-                left_on="tutor_id",
-                right_on="TutorID",
-                how="left"
-            )
+        # === 4. Объединяем с данными о преподавателях ===
+        merged = pd.merge(
+            pivot,
+            df_tutors,
+            left_on="tutor_id",
+            right_on="TutorID",
+            how="left"
+        )
 
-            # === 5. Формируем удобные колонки ===
-            merged["fio"] = merged["lastname"] + " " + merged["firstname"] + " " + merged["patronymic"]
+        # === 5. Формируем удобные колонки ===
+        merged["fio"] = merged["lastname"] + " " + merged["firstname"] + " " + merged["patronymic"]
 
-            # Все колонки-дни:
-            day_columns = sorted([c for c in merged.columns if isinstance(c, int)])
+        # Все колонки-дни:
+        day_columns = sorted([c for c in merged.columns if isinstance(c, int)])
 
-            # === 6. Добавляем подсчёт рабочих дней ===
-            merged["working_days"] = merged[day_columns].apply(lambda row: sum(self.is_working(v) for v in row), axis=1)
-            merged["unworking_days"] = merged[day_columns].apply(
-                lambda row: sum(not bool(self.is_working(v)) for v in row),
-                axis=1
-            )
+        # === 6. Добавляем подсчёт рабочих дней ===
+        merged["working_days"] = merged[day_columns].apply(lambda row: sum(self.is_working(v) for v in row), axis=1)
+        merged["unworking_days"] = merged[day_columns].apply(
+            lambda row: sum(not bool(self.is_working(v)) for v in row),
+            axis=1
+        )
 
-            # === 7. Собираем результат ===
-            day_columns = sorted([c for c in merged.columns if isinstance(c, int)])
+        # === 7. Собираем результат ===
+        day_columns = sorted([c for c in merged.columns if isinstance(c, int)])
 
-            # Добавляем столбец hours_per_day (словарь по дням)
-            merged["hours_per_day"] = merged[day_columns].apply(lambda row: {str(day): row[day] for day in day_columns},
-                                                                axis=1)
-            # Формируем итоговый DataFrame (без отдельных дневных колонок)
-            result = merged[["fio", "position_name", "hours_per_day", "working_days", "unworking_days"]]
+        # Добавляем столбец hours_per_day (словарь по дням)
+        merged["hours_per_day"] = merged[day_columns].apply(lambda row: {str(day): row[day] for day in day_columns},
+                                                            axis=1)
+        # Формируем итоговый DataFrame (без отдельных дневных колонок)
+        result = merged[["fio", "position_name", "hours_per_day", "working_days", "unworking_days"]]
 
-            # === 8. Возвращаем JSON ===
-            return result.to_dict(orient="records")
+        # === 8. Возвращаем JSON ===
+        return result.to_dict(orient="records")
 
     async def generate_table_html(self, year, month, staff_data):
         html_content = """

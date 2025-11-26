@@ -1,7 +1,7 @@
-import hashlib
 import datetime
 
 from typing import cast, Sequence
+from collections import defaultdict
 
 from app.dao.base import MySQLDao
 from app.models.mysql.nitro import Tutor, TutorCafedra, Cafedra, TutorPositions, Faculty, StructuralSubdivision, Building
@@ -12,53 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TutorDAO(MySQLDao):
-    def __init__(self, session, session_perco: AsyncSession = None):
-        super().__init__(session, Tutor)
+    def __init__(
+            self,
+            session_nitro: AsyncSession,
+            session_perco: AsyncSession = None
+    ):
+        super().__init__(session_nitro, Tutor)
         self.session_perco = session_perco
-
-    async def get_by_iin(self, iin: str, fields: Sequence | None = None) -> Tutor:
-        stmt = select(Tutor).where(Tutor.iinplt == iin)
-
-        # Если указаны конкретные поля — добавляем load_only
-        if fields:
-            stmt = stmt.options(load_only(*fields))
-
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def get_by_platonus_credentials(self, login: str, password: str):
-        md5_hash = hashlib.md5()
-        md5_hash.update(password.encode('utf-8'))
-        md5_password = md5_hash.hexdigest()
-
-        stmt = select(Tutor.TutorID).where(Tutor.Login == login, Tutor.Password == md5_password)
-        result = await self.session.execute(stmt)
-
-        return result.scalar_one_or_none()
-
-    async def get_tutors_and_position(
-            self, filters: dict = None
-    ) -> list[tuple[Tutor, StructuralSubdivision]]:
-        stmt = (
-            select(
-                Tutor,
-                StructuralSubdivision,
-            )
-            .outerjoin(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
-        )
-
-        if filters:
-            for field, values in filters.items():
-                if isinstance(values, list):
-                    stmt = stmt.where(field.in_(values))
-                else:
-                    stmt = stmt.where(field == values)
-
-        result = await self.session.execute(stmt)
-
-        rows = cast(list[tuple[Tutor, StructuralSubdivision]], result.tuples().all())
-
-        return rows
 
     async def get_tutor_positions_pps(self, tutor_id: int, lang: str = "RU"):
         name_column = getattr(TutorPositions, f"Name{lang}")
@@ -161,3 +121,74 @@ class TutorDAO(MySQLDao):
 
         return final_result
 
+    async def join_structural_subdivision_and_tutor_positions(
+            self,
+            filters: dict = None,
+            fields: Sequence | None = None
+    ):
+        stmt = (
+            select(
+                Tutor,
+                StructuralSubdivision,
+                TutorPositions
+            )
+            .join(StructuralSubdivision, StructuralSubdivision.id == Tutor.departmentid)
+            .join(TutorPositions, TutorPositions.ID == Tutor.job_title_int)
+        )
+
+        if fields:
+            grouped = defaultdict(list)
+            for col in fields:
+                grouped[col.class_].append(col)
+
+            for model, cols in grouped.items():
+                stmt = stmt.options(load_only(*cols))
+
+        if filters:
+            for field, values in filters.items():
+                if isinstance(values, list):
+                    stmt = stmt.where(field.in_(values))
+                else:
+                    stmt = stmt.where(field == values)
+
+        result = await self.session.execute(stmt)
+
+        rows = cast(list[tuple[Tutor, StructuralSubdivision]], result.tuples().all())
+
+        return rows
+
+    async def join_structural_subdivision_and_tutor_positions_deans(
+            self,
+            filters: dict = None,
+            fields: Sequence | None = None
+    ) -> list[tuple[Tutor, StructuralSubdivision]]:
+        stmt = (
+            select(
+                Tutor,
+                StructuralSubdivision,
+                TutorPositions
+            )
+            .outerjoin(StructuralSubdivision, StructuralSubdivision.dean == Tutor.TutorID)
+            .outerjoin(TutorPositions, TutorPositions.ID == Tutor.job_title_int)
+        )
+
+        if fields:
+            grouped = defaultdict(list)
+            for col in fields:
+                grouped[col.class_].append(col)
+
+            for model, cols in grouped.items():
+                stmt = stmt.options(load_only(*cols))
+
+        if filters:
+            for field, values in filters.items():
+                if isinstance(values, list):
+                    stmt = stmt.where(field.in_(values))
+                else:
+                    stmt = stmt.where(field == values)
+
+        result = await self.session.execute(stmt)
+
+        rows = cast(list[tuple[Tutor, StructuralSubdivision]], result.tuples().all())
+
+        return rows

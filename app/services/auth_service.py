@@ -1,6 +1,7 @@
 import secrets
 import string
 import base64
+import hashlib
 
 from fastapi import HTTPException
 from datetime import datetime, timedelta, UTC
@@ -18,92 +19,115 @@ from app.models.mysql.nitro import (
     Student as StudentModel
 )
 
-from app.db.session import get_postgres_session, get_mysql_session, redis_client
+from app.db.session import redis_client
 from app.schemas import NcalayerVerifyRequest, UserEcpInfo, Tokens, UserResponse, PlatonusLoginRequest
 from app.services.ncanode import NCANode
 from app.services.user import UserService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 settings = get_settings()
 
 
 class AuthService:
-    @staticmethod
-    async def _authenticate_by_ecp(user_ecp_info: UserEcpInfo) -> UserModel:
-        async with get_postgres_session() as postgres_session:
-            async with get_mysql_session() as mysql_session:
-                user = None
-                tutor_dao = TutorDAO(mysql_session)
-                tutor = await tutor_dao.get_by_iin(
-                    iin=user_ecp_info.iin_number,
-                    fields=[TutorModel.TutorID]
+    def __init__(self, session_nitro: AsyncSession, session_postgres: AsyncSession, session_perco: AsyncSession):
+        self.session_nitro = session_nitro
+        self.session_postgres = session_postgres
+        self.session_perco = session_perco
+
+    async def _authenticate_by_ecp(self, user_ecp_info: UserEcpInfo) -> UserModel:
+        user = None
+        tutor_dao = TutorDAO(self.session_nitro)
+        tutor = await tutor_dao.get_one_or_none(
+            fields=[TutorModel.TutorID],
+            filters={
+                TutorModel.iinplt: user_ecp_info.iin_number,
+            }
+        )
+
+        if tutor:
+            user = await MigrateUserMysqlToPostgres(self.session_nitro, self.session_postgres).migrate_by_tutor_id(
+                tutor_id=tutor.TutorID,
+                bin_number=user_ecp_info.bin_number
+            )
+        else:
+            student_dao = StudentDAO(self.session_nitro)
+            student = await student_dao.get_one_or_none(
+                filters={
+                    StudentModel.iinplt: user_ecp_info.iin_number,
+                    StudentModel.isStudent: [1, 3]
+                },
+                fields=[StudentModel.StudentID]
+            )
+
+            if student:
+                user = await MigrateUserMysqlToPostgres(self.session_nitro, self.session_postgres).migrate_by_student_id(
+                    student_id=student.StudentID
                 )
 
-                if tutor:
-                    user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
-                        tutor_id=tutor.TutorID,
-                        bin_number=user_ecp_info.bin_number
-                    )
-                else:
-                    student_dao = StudentDAO(mysql_session)
-                    student = await student_dao.get_by_iin(
-                        iin=user_ecp_info.iin_number,
-                        is_student=[1, 3],
-                        fields=[StudentModel.StudentID]
-                    )
+        if user is None:
+            roles = await RoleDao(self.session_postgres).get_roles_by_ids([11])
+            user_dao = UserDAO(self.session_postgres)
+            user_info_dao = UserInfoDAO(self.session_postgres)
 
-                    if student:
-                        user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_student_id(
-                            student_id=student.StudentID
-                        )
+            user = await user_dao.add(
+                platonus_id=None,
+                is_student=False,
+                roles=roles
+            )
 
-                if user is None:
-                    roles = await RoleDao(postgres_session).get_roles_by_ids([11])
-                    user_dao = UserDAO(postgres_session)
-                    user_info_dao = UserInfoDAO(postgres_session)
+            await user_info_dao.add(
+                user_id=user.id,
+                lastname=user_ecp_info.lastname,
+                firstname=user_ecp_info.firstname,
+                patronymic=user_ecp_info.patronymic,
+                iin_number=user_ecp_info.iin_number
+            )
 
-                    user = await user_dao.add(
-                        platonus_id=None,
-                        is_student=False,
-                        roles=roles
-                    )
+        return user
 
-                    await user_info_dao.add(
-                        user_id=user.id,
-                        lastname=user_ecp_info.lastname,
-                        firstname=user_ecp_info.firstname,
-                        patronymic=user_ecp_info.patronymic,
-                        iin_number=user_ecp_info.iin_number
-                    )
+    async def _authenticate_by_platonus(self, login: str, password: str) -> UserModel:
+        md5_hash = hashlib.md5()
+        md5_hash.update(password.encode('utf-8'))
+        md5_password = md5_hash.hexdigest()
 
-                return user
+        tutor = await TutorDAO(self.session_nitro).get_one_or_none(
+            fields=[TutorModel.TutorID],
+            filters={
+                TutorModel.Login: login,
+                TutorModel.Password: md5_password
+            }
+        )
+        user = None
 
-    @staticmethod
-    async def _authenticate_by_platonus(login: str, password: str) -> UserModel:
-        async with get_postgres_session() as postgres_session:
-            async with get_mysql_session() as mysql_session:
-                tutor_dao = TutorDAO(mysql_session)
-                user_dao = UserDAO(postgres_session)
-                tutor_id = await tutor_dao.get_by_platonus_credentials(login, password)
-                user = None
+        if tutor:
+            user = await MigrateUserMysqlToPostgres(self.session_nitro, self.session_postgres).migrate_by_tutor_id(
+                tutor_id=tutor.TutorID
+            )
+        else:
+            student_dao = StudentDAO(self.session_nitro)
 
-                if tutor_id:
-                    user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_tutor_id(
-                        tutor_id=tutor_id
-                    )
-                else:
-                    student_dao = StudentDAO(mysql_session)
-                    student = await student_dao.get_by_platonus_credentials(login, password)
+            md5_hash = hashlib.md5()
+            md5_hash.update(password.encode('utf-8'))
+            md5_password = md5_hash.hexdigest()
 
-                    if student:
-                        user = await MigrateUserMysqlToPostgres(mysql_session, postgres_session).migrate_by_student_id(
-                            student_id=student.StudentID
-                        )
+            student = await student_dao.get_one_or_none(
+                filters={
+                    StudentModel.Login: login,
+                    StudentModel.Password: md5_password
+                },
+                fields=[StudentModel.StudentID]
+            )
 
-                # if user is None:
-                #     user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
+            if student:
+                user = await MigrateUserMysqlToPostgres(self.session_nitro, self.session_postgres).migrate_by_student_id(
+                    student_id=student.StudentID
+                )
 
-                return user
+        # if user is None:
+        #     user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
+
+        return user
 
     @staticmethod
     def _create_access_token(user: UserModel):
@@ -178,12 +202,15 @@ class AuthService:
 
         current_user = await self._authenticate_by_ecp(user_ecp_info)
         tokens = self._create_tokens(current_user)
-        result_user = await UserService().user_data(current_user)
+        result_user = await UserService(
+            session_nitro=self.session_nitro,
+            session_postgres=self.session_postgres,
+            session_perco=self.session_perco
+        ).user_data(current_user)
 
         return tokens, result_user
 
-    @classmethod
-    async def refresh_access_token(cls, refresh_token: str):
+    async def refresh_access_token(self, refresh_token: str):
         if not refresh_token:
             raise HTTPException(status_code=401, detail="Refresh token missing")
 
@@ -195,11 +222,10 @@ class AuthService:
         except JWTError:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        async with get_postgres_session() as postgres_session:
-            user = await UserDAO(postgres_session).get_by_id(user_id)
-            new_access_token = cls._create_access_token(user)
+        user = await UserDAO(self.session_postgres).get_by_id(user_id)
+        new_access_token = self._create_access_token(user)
 
-            return new_access_token
+        return new_access_token
 
     async def platonus_login(self, data: PlatonusLoginRequest) -> tuple[Tokens, UserResponse]:
         if not data.login.strip() or not data.password.strip():
@@ -211,6 +237,10 @@ class AuthService:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         tokens = self._create_tokens(current_user)
-        result_user = await UserService().user_data(current_user)
+        result_user = await UserService(
+            session_nitro=self.session_nitro,
+            session_postgres=self.session_postgres,
+            session_perco=self.session_perco
+        ).user_data(current_user)
 
         return tokens, result_user

@@ -1,13 +1,18 @@
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from fastapi import Depends
 
 from app.dao.base import PostgresDao
 from app.dao.postgres.role import RoleDao
 from app.models.postgres import User, UserRole
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserDAO(PostgresDao):
-    def __init__(self, session):
+    def __init__(
+            self,
+            session: AsyncSession
+    ):
         super().__init__(session, User)
 
     async def add_roles(self, user_id: int, role_ids: list[int]):

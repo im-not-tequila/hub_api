@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, Response, UploadFile, File, status, Query, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Form
 from fastapi.responses import FileResponse
 
 from typing import List
@@ -9,7 +9,8 @@ from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
 from app.schemas import (DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, SampleDocument)
 from app.services.document import DocumentService
-
+from app.db.session import get_nitro_session, get_postgres_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -19,9 +20,14 @@ router = APIRouter()
     response_model=List[OutgoingResponse]
 )
 async def incoming(
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ) -> List[OutgoingResponse]:
-    return await DocumentService().incoming(current_user)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).incoming(current_user)
 
 
 @router.get(
@@ -29,9 +35,14 @@ async def incoming(
     response_model=List[OutgoingResponse]
 )
 async def outgoing(
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ) -> List[OutgoingResponse]:
-    return await DocumentService().outgoing(current_user)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).outgoing(current_user)
 
 
 @router.get(
@@ -39,9 +50,14 @@ async def outgoing(
     response_model=List[OutgoingResponse]
 )
 async def pending_execution(
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ) -> List[OutgoingResponse]:
-    return await DocumentService().pending_execution(current_user)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).pending_execution(current_user)
 
 
 @router.get(
@@ -49,9 +65,14 @@ async def pending_execution(
     response_model=List[OutgoingResponse]
 )
 async def executed(
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ) -> List[OutgoingResponse]:
-    return await DocumentService().executed(current_user)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).executed(current_user)
 
 
 @router.get(
@@ -60,9 +81,14 @@ async def executed(
 )
 async def types_and_categories(
         lang: str = Query('ru', description="Язык: ru, kz, en"),
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    return await DocumentService().types_and_categories(current_user, lang)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).types_and_categories(current_user, lang)
 
 
 @router.post(
@@ -70,13 +96,15 @@ async def types_and_categories(
     status_code=status.HTTP_204_NO_CONTENT
 )
 async def upload(
-    document_name: str = Form(...),
-    document_type_id: int = Form(...),
-    recipient_id: int = Form(...),
-    approver_user_ids: str = Form(...),  # приходит как JSON-строка
-    signature: str = Form(...),
-    file: UploadFile = File(...),
-    current_user: UserModel = Depends(get_current_user),
+        document_name: str = Form(...),
+        document_type_id: int = Form(...),
+        recipient_id: int = Form(...),
+        approver_user_ids: str = Form(...),  # приходит как JSON-строка
+        signature: str = Form(...),
+        file: UploadFile = File(...),
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
     approver_user_ids_list = json.loads(approver_user_ids)
 
@@ -88,7 +116,10 @@ async def upload(
         signature=signature
     )
 
-    await DocumentService().upload(data, file, current_user)
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).upload(data, file, current_user)
 
 @router.post(
     path="/upload-custom/{document_type}",
@@ -104,9 +135,14 @@ async def upload_custom():
 async def sign(
         document_id: int,
         data: DocumentSignRequest,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().sign(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).sign(
         document_id=document_id,
         user_signature=data.signature,
         user=current_user,
@@ -121,9 +157,14 @@ async def sign(
 )
 async def cancel(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().cancel(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).cancel(
         document_id=document_id,
         approver_id=current_user.id
     )
@@ -135,9 +176,14 @@ async def cancel(
 )
 async def execute(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().execute(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).execute(
         document_id=document_id,
         executor_id=current_user.id
     )
@@ -149,9 +195,14 @@ async def execute(
 )
 async def revoke(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().revoke(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).revoke(
         user_id=current_user.id,
         document_id=document_id
     )
@@ -163,9 +214,14 @@ async def revoke(
 )
 async def hide(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().hide(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).hide(
         user_id=current_user.id,
         document_id=document_id
     )
@@ -176,9 +232,14 @@ async def hide(
 )
 async def unhide(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    await DocumentService().unhide(
+    await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).unhide(
         user_id=current_user.id,
         document_id=document_id
     )
@@ -189,9 +250,14 @@ async def unhide(
 )
 async def pdf(
         document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    file_path = await DocumentService().pdf(document_id)
+    file_path = await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).pdf(document_id)
 
     return FileResponse(file_path, media_type="application/pdf", filename="document.pdf")
 
@@ -202,9 +268,14 @@ async def pdf(
 )
 async def samples(
         lang: str = Query('ru', description="Язык: ru, kz, en"),
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    return await DocumentService().samples()
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).samples()
 
 
 @router.get(
@@ -213,9 +284,14 @@ async def samples(
 )
 async def sample_pdf(
         sample_document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    return await DocumentService().sample_pdf(sample_document_id)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).sample_pdf(sample_document_id)
 
 
 @router.get(
@@ -225,6 +301,11 @@ async def sample_pdf(
 )
 async def sample_download(
         sample_document_id: int,
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
 ):
-    return await DocumentService().sample_download(sample_document_id)
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).sample_download(sample_document_id)

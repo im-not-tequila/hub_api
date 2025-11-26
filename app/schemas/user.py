@@ -11,6 +11,7 @@ class UserResponse(BaseModel):
     structural_subdivision: str
     patronymic: Optional[str] = None
     shortname: str = Field(default="")
+    post: str = Field(default="")
 
     def model_post_init(self, __context) -> None:
         """Форматируем строковые поля и автоматически формируем shortname"""
@@ -22,6 +23,11 @@ class UserResponse(BaseModel):
             self.lastname = self.lastname.strip().capitalize()
         if self.patronymic:
             self.patronymic = self.patronymic.strip().capitalize()
+
+        # --- ДОБАВЛЕНО: Нормализация должности ---
+        if self.post:
+            self.post = self.post.strip().capitalize()
+        # ----------------------------------------
 
         # Формируем инициалы
         first_initial = f"{self.firstname[0].upper()}." if self.firstname else ""

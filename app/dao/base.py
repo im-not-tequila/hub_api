@@ -68,7 +68,11 @@ class BaseDAO(Generic[ModelType]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
-    async def get_one_or_none(self, fields: Sequence | None = None, **filter_by) -> ModelType | None:
+    async def get_one_or_none(
+            self,
+            filters: dict = None,
+            fields: Sequence | None = None, **filter_by
+    ) -> ModelType | None:
         """
         Асинхронно находит и возвращает один экземпляр модели по указанным критериям или None.
 
@@ -79,10 +83,17 @@ class BaseDAO(Generic[ModelType]):
             Экземпляр модели или None, если ничего не найдено.
         """
 
-        stmt = select(self.model).filter_by(**filter_by)
+        stmt = select(self.model).limit(1)
 
         if fields:
             stmt = stmt.options(load_only(*fields))
+
+        if filters:
+            for field, values in filters.items():
+                if isinstance(values, list):
+                    stmt = stmt.where(field.in_(values))
+                else:
+                    stmt = stmt.where(field == values)
 
         result = await self.session.execute(stmt)
 

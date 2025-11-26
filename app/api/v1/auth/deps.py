@@ -1,14 +1,19 @@
-from fastapi import Request, WebSocket, HTTPException, status
+from fastapi import Request, HTTPException, status, Depends
 from jose import jwt, JWTError
 
 from app.core.settings import get_settings
 from app.db.session import get_postgres_session
 from app.dao.postgres import UserDAO
 from app.models.postgres.user import User
+from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 
-async def get_current_user(request: Request) -> User:
+
+async def get_current_user(
+        request: Request,
+        session_postgres: AsyncSession = Depends(get_postgres_session)
+) -> User:
     """
     Достает текущего пользователя из access-токена в cookie.
     Работает и для обычных запросов, и для WebSocket.
@@ -36,14 +41,13 @@ async def get_current_user(request: Request) -> User:
             detail="Invalid token",
         )
 
-    async with get_postgres_session() as session:
-        user_dao = UserDAO(session)
-        user = await user_dao.get_by_id(int(user_id))
+    user_dao = UserDAO(session_postgres)
+    user = await user_dao.get_by_id(int(user_id))
 
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found",
-            )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
 
     return user

@@ -12,7 +12,8 @@ class TutorWithPosition(BaseModel):
     lastname: Optional[str]
     firstname: Optional[str]
     patronymic: Optional[str]
-    position_name: Optional[str]
+    structural_subdivision_name: Optional[str]
+    tutor_position_name: Optional[str]
 
     class Config:
         from_attributes = True

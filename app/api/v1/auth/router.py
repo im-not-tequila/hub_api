@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, Depends
 
 from app.services.auth_service import AuthService
 
 
 from app.schemas import (NcalayerVerifyRequest, GetChallengeResponse, NcalayerVerifyResponse, PlatonusLoginRequest,
                       PlatonusLoginResponse, RefreshTokenResponse)
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_nitro_session, get_postgres_session, get_perco_session
 
 
 router = APIRouter()
@@ -24,8 +27,18 @@ async def ncalayer_challenge():
     path="/ncalayer/verify",
     response_model=NcalayerVerifyResponse
 )
-async def ncalayer_verify(data: NcalayerVerifyRequest, response: Response) -> NcalayerVerifyResponse:
-    tokens, user = await AuthService().ncalayer_verify(data)
+async def ncalayer_verify(
+        data: NcalayerVerifyRequest,
+        response: Response,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
+        session_perco: AsyncSession = Depends(get_perco_session)
+) -> NcalayerVerifyResponse:
+    tokens, user = await AuthService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+        session_perco=session_perco
+    ).ncalayer_verify(data)
 
     response.set_cookie(
         key="refresh_token",
@@ -55,8 +68,18 @@ async def ncalayer_verify(data: NcalayerVerifyRequest, response: Response) -> Nc
     path="/platonus/login",
     response_model=PlatonusLoginResponse
 )
-async def platonus_login(data: PlatonusLoginRequest, response: Response):
-    tokens, user = await AuthService().platonus_login(data)
+async def platonus_login(
+        data: PlatonusLoginRequest,
+        response: Response,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
+        session_perco: AsyncSession = Depends(get_perco_session)
+):
+    tokens, user = await AuthService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+        session_perco=session_perco
+    ).platonus_login(data)
 
     response.set_cookie(
         key="refresh_token",
@@ -84,15 +107,25 @@ async def platonus_login(data: PlatonusLoginRequest, response: Response):
 
 @router.post(
     path="/refresh_token",
-    response_model=RefreshTokenResponse
+    response_model=RefreshTokenResponse,
 )
-async def refresh_token(request: Request, response: Response):
+async def refresh_token(
+        request: Request,
+        response: Response,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
+        session_perco: AsyncSession = Depends(get_perco_session)
+):
     """
     Обновление access токена по refresh токену.
     """
 
     refresh_token_cookie = request.cookies.get("refresh_token")
-    new_access_token = await AuthService.refresh_access_token(refresh_token_cookie)
+    new_access_token = await AuthService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+        session_perco=session_perco
+    ).refresh_access_token(refresh_token_cookie)
 
     response.set_cookie(
         key="access_token",

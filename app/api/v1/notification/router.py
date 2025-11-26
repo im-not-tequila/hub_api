@@ -9,6 +9,9 @@ from app.db.redis_connection import redis_client
 from app.api.v1.auth.deps import get_current_user
 from app.schemas import NotificationResponse
 from app.models.postgres import User as UserModel
+from app.db.session import get_postgres_session
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 router = APIRouter(tags=["notifications"])
@@ -48,10 +51,16 @@ async def websocket_endpoint(websocket: WebSocket, refresh_token: Optional[str] 
 async def notifications(
         is_read: bool = None,
         current_user: UserModel = Depends(get_current_user),
-        limit: int = 50
+        limit: int = 50,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
 ):
-    return await NotificationService.notifications(current_user.id, is_read, limit)
-
+    return await NotificationService(
+        session_postgres=session_postgres,
+    ).notifications(
+        current_user.id,
+        is_read,
+        limit
+    )
 
 @router.post(
     path="/mark-as-read",
@@ -59,6 +68,12 @@ async def notifications(
 )
 async def mark_as_read(
         notification_ids: List[int],
-        current_user: UserModel = Depends(get_current_user)
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
 ):
-    await NotificationService.mark_as_read(current_user.id, notification_ids)
+    await NotificationService(
+        session_postgres=session_postgres,
+    ).mark_as_read(
+        current_user.id,
+        notification_ids
+    )
