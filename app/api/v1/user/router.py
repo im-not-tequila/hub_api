@@ -40,7 +40,9 @@ async def get_me(
         session_postgres=session_postgres,
         session_nitro=session_nitro,
         session_perco=session_perco,
-    ).user_data(current_user)
+    ).user_data(
+        current_user
+    )
 
 
 @router.get(
@@ -172,4 +174,23 @@ async def visit_history_working_hours(
         current_user,
         start_date,
         finish_date
+    )
+
+
+@router.get(
+    path="/vices"
+)
+async def vices(
+    structural_subdivision_id: int,
+    session_postgres: AsyncSession = Depends(get_postgres_session),
+    session_nitro: AsyncSession = Depends(get_nitro_session),
+    session_perco: AsyncSession = Depends(get_perco_session),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return await UserService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+        session_perco=session_perco,
+    ).vices(
+        structural_subdivision_id
     )

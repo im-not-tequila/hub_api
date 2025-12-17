@@ -1,6 +1,6 @@
 from .user_ecp_info import UserEcpInfo
 from .tokens import Tokens
-from .user import UserResponse, BarrierResponse, WorkingHoursResponse, NotificationResponse
+from .user import UserResponse, BarrierResponse, WorkingHoursResponse, NotificationResponse, StructuralSubdivisionResponse, ViceResponse
 from .document import (
     DocumentUploadRequest,
     OutgoingResponse,
@@ -10,7 +10,9 @@ from .document import (
     Person,
     ApproverPerson,
     DocumentSignRequest,
-    SampleDocument
+    SampleDocument,
+    # AutoCreatePDFRequest,
+    TravelFundingSourceResponse
 )
 from .auth import (NcalayerVerifyRequest, NcalayerVerifyResponse, PlatonusLoginRequest, PlatonusLoginResponse,
                    GetChallengeResponse, RefreshToken, RefreshTokenResponse )
@@ -38,5 +40,9 @@ __all__ = [
     'BarrierResponse',
     'WorkingHoursResponse',
     'NotificationResponse',
-    'SampleDocument'
+    'SampleDocument',
+    # 'AutoCreatePDFRequest',
+    'TravelFundingSourceResponse',
+    'StructuralSubdivisionResponse',
+    'ViceResponse'
 ]

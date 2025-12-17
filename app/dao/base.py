@@ -26,12 +26,16 @@ class BaseDAO(Generic[ModelType]):
 
     async def get_all_filtered(
         self,
+        fields: Sequence | None = None,
         filters: dict = None,
         limit: int = 100,
         offset: int = 0,
         order_by: str | None = None,  # пример: "id:desc" или "created_at:asc"
     ):
         stmt = select(self.model)
+
+        if fields:
+            stmt = stmt.options(load_only(*fields))
 
         # Фильтрация
         if filters:
@@ -66,12 +70,14 @@ class BaseDAO(Generic[ModelType]):
 
         # Выполнение запроса
         result = await self.session.execute(stmt)
+
         return result.scalars().all()
 
     async def get_one_or_none(
             self,
             filters: dict = None,
-            fields: Sequence | None = None, **filter_by
+            fields: Sequence | None = None,
+            **filter_by
     ) -> ModelType | None:
         """
         Асинхронно находит и возвращает один экземпляр модели по указанным критериям или None.

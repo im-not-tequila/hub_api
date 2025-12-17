@@ -22,6 +22,9 @@ class WorkTabelService:
             }
         )
 
+        if data is None:
+            raise HTTPException(status_code=404, detail="No subdivision found for this user")
+
         subdivision_id = data.id
 
         if not subdivision_id:

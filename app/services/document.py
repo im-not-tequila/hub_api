@@ -12,7 +12,16 @@ from app.dao.mysql import TutorDAO, StudentDAO
 from app.services.ncanode import NCANode
 from app.services.notification import NotificationService
 from app.core.settings import get_settings
-from app.dao.postgres import DocumentDAO, ApproverDAO, ExecutorDAO, HiddenDocumentDAO, UserInfoDAO, SampleDocumentDAO
+
+from app.dao.postgres import (
+    DocumentDAO,
+    ApproverDAO,
+    ExecutorDAO,
+    HiddenDocumentDAO,
+    UserInfoDAO,
+    SampleDocumentDAO,
+    TravelFundingSourceDAO
+)
 from app.services.sigex import Sigex
 
 from app.schemas import (
@@ -35,7 +44,8 @@ from app.models.postgres import (
     DocumentStatus,
     ApproverStatus,
     ExecutorStatus,
-    SampleDocument as SampleDocumentModel
+    SampleDocument as SampleDocumentModel,
+    TravelFundingSource as TravelFundingSourceModel
 )
 
 from app.models.mysql.nitro import (
@@ -47,6 +57,7 @@ from app.models.mysql.nitro import (
 
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 from sqlalchemy.ext.asyncio import AsyncSession
+from .auto_create_document import AutoCreateDocument
 
 
 class DocumentService:
@@ -429,8 +440,22 @@ class DocumentService:
                 is_recipient=False
             )
 
-    async def upload_custom(self):
-        pass
+    async def auto_create_pdf(
+            self,
+            document_type_id: int,
+            data: dict,
+            current_user: UserModel,
+            language: str = 'ru'
+    ):
+        return await AutoCreateDocument(
+            session_nitro=self.session_nitro,
+            session_postgres=self.session_postgres,
+            document_type_id=document_type_id,
+            current_user=current_user,
+            language=language
+        ).make_107(
+            data=data
+        )
 
     async def types_and_categories(self, user: UserModel, language: str) -> List[DocumentTypesAndCategory]:
         groups = await DocumentDAO(self.session_postgres).get_all_types_and_categories(user.id)
@@ -723,3 +748,25 @@ class DocumentService:
             filename=document_path.name
         )
 
+    async def travel_funding_sources(self, language: str):
+        data = await TravelFundingSourceDAO(
+            self.session_postgres
+        ).get_all_filtered(
+            fields=[
+                TravelFundingSourceModel.id,
+                TravelFundingSourceModel.name_ru,
+                TravelFundingSourceModel.name_kz,
+            ]
+        )
+
+        result_travel_funding_sources = []
+
+        for travel_funding_source in data:
+            result_travel_funding_sources.append(
+                {
+                    "id": travel_funding_source.id,
+                    "name": travel_funding_source.name_ru if language == "ru" else travel_funding_source.name_kz
+                }
+            )
+
+        return result_travel_funding_sources

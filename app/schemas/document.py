@@ -68,6 +68,7 @@ class SampleDocument(BaseModel):
     group: str
     group_id: int
 
+
 class OutgoingResponse(BaseModel):
     id: int
     name: str
@@ -138,3 +139,12 @@ class DocumentSignRequest(BaseModel):
     resolution: str | None
     executors: List[int]
     signature: str
+
+
+# class AutoCreatePDFRequest(BaseModel):
+#     data: dict
+
+
+class TravelFundingSourceResponse(BaseModel):
+    id: int
+    name: str

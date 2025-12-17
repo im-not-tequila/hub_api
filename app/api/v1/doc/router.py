@@ -1,13 +1,21 @@
 import json
 
-from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Form
+from fastapi import APIRouter, Depends, UploadFile, File, status, Query, Form, Response
 from fastapi.responses import FileResponse
 
 from typing import List
 
 from app.models.postgres import User as UserModel
 from app.api.v1.auth.deps import get_current_user
-from app.schemas import (DocumentUploadRequest, OutgoingResponse, DocumentTypesAndCategory, DocumentSignRequest, SampleDocument)
+from app.schemas import (
+    DocumentUploadRequest,
+    OutgoingResponse,
+    DocumentTypesAndCategory,
+    DocumentSignRequest,
+    SampleDocument,
+    # AutoCreatePDFRequest,
+    TravelFundingSourceResponse
+)
 from app.services.document import DocumentService
 from app.db.session import get_nitro_session, get_postgres_session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +35,9 @@ async def incoming(
     return await DocumentService(
         session_postgres=session_postgres,
         session_nitro=session_nitro,
-    ).incoming(current_user)
+    ).incoming(
+        current_user
+    )
 
 
 @router.get(
@@ -122,11 +132,52 @@ async def upload(
     ).upload(data, file, current_user)
 
 @router.post(
-    path="/upload-custom/{document_type}",
-    status_code=status.HTTP_204_NO_CONTENT
+        path="/auto/create-pdf/{document_type_id}"
 )
-async def upload_custom():
-    pass
+async def auto_create_pdf(
+        document_type_id: int,
+        data: dict,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
+        current_user: UserModel = Depends(get_current_user),
+        language: str = Query('ru', description="Язык: ru, kz, en"),
+):
+    pdf_bytes = await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).auto_create_pdf(
+        document_type_id=document_type_id,
+        data=data.get('data'),
+        current_user=current_user,
+        language=language
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={document_type_id}.pdf"
+        }
+    )
+
+
+@router.get(
+    path="/travel-funding-sources",
+    response_model=List[TravelFundingSourceResponse]
+)
+async def travel_funding_sources(
+        lang: str = Query('ru', description="Язык: ru, kz, en"),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        session_nitro: AsyncSession = Depends(get_nitro_session),
+        current_user: UserModel = Depends(get_current_user)
+):
+    return await DocumentService(
+        session_postgres=session_postgres,
+        session_nitro=session_nitro,
+    ).travel_funding_sources(
+        lang
+    )
+
 
 @router.post(
     path="/{document_id}/sign",
@@ -257,7 +308,9 @@ async def pdf(
     file_path = await DocumentService(
         session_postgres=session_postgres,
         session_nitro=session_nitro,
-    ).pdf(document_id)
+    ).pdf(
+        document_id
+    )
 
     return FileResponse(file_path, media_type="application/pdf", filename="document.pdf")
 

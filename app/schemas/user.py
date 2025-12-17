@@ -4,14 +4,21 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 
+class StructuralSubdivisionResponse(BaseModel):
+    id: int | None
+    name_ru: str
+    name_kz: str
+
+
 class UserResponse(BaseModel):
     id: int
     firstname: str
     lastname: str
-    structural_subdivision: str
+    structural_subdivision: StructuralSubdivisionResponse
     patronymic: Optional[str] = None
     shortname: str = Field(default="")
     post: str = Field(default="")
+    is_dean: bool = False
 
     def model_post_init(self, __context) -> None:
         """Форматируем строковые поля и автоматически формируем shortname"""
@@ -19,15 +26,16 @@ class UserResponse(BaseModel):
         # Приводим фамилию, имя, отчество в формат "Первая буква заглавная, остальные строчные"
         if self.firstname:
             self.firstname = self.firstname.strip().capitalize()
+
         if self.lastname:
             self.lastname = self.lastname.strip().capitalize()
+
         if self.patronymic:
             self.patronymic = self.patronymic.strip().capitalize()
 
-        # --- ДОБАВЛЕНО: Нормализация должности ---
         if self.post:
             self.post = self.post.strip().capitalize()
-        # ----------------------------------------
+
 
         # Формируем инициалы
         first_initial = f"{self.firstname[0].upper()}." if self.firstname else ""
@@ -66,3 +74,11 @@ class NotificationResponse(BaseModel):
     is_read: bool
     other_data: dict | None
     created_at: datetime.datetime
+
+
+class ViceResponse(BaseModel):
+    platonus_id: int
+    lastname: Optional[str]
+    firstname: Optional[str]
+    patronymic: Optional[str]
+    shortname: Optional[str]
