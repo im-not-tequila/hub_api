@@ -177,6 +177,8 @@ class DocumentService:
 
         for approver in approvers:
             approver_user = tutors_dict.get(approver.approver_user.platonus_id)
+            if approver_user is None:
+                continue
             approver_position = subdivision_dict.get(approver.approver_user.platonus_id)
 
             approver_response = ApproverPerson(
