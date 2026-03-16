@@ -121,6 +121,15 @@ class TutorDAO(MySQLDao):
 
         return final_result
 
+    async def get_tutors_with_positions_by_ids(self, tutor_ids: list[int]):
+        stmt = (
+            select(Tutor, TutorPositions)
+            .outerjoin(TutorPositions, TutorPositions.ID == Tutor.job_title_int)
+            .where(Tutor.TutorID.in_(tutor_ids), Tutor.deleted == 0)
+        )
+        result = await self.session.execute(stmt)
+        return result.tuples().all()
+
     async def join_structural_subdivision_and_tutor_positions(
             self,
             filters: dict = None,

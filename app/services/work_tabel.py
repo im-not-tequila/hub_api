@@ -7,25 +7,44 @@ from fastapi import HTTPException
 from app.dao.mysql import WorkTabelDAO, StructuralSubdivisionDAO
 from app.models.postgres import User
 from app.models.mysql.nitro import StructuralSubdivision as StructuralSubdivisionModel
+from app.services.user import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class WorkTabelService:
-    def __init__(self, session_nitro: AsyncSession):
+    def __init__(self, session_nitro: AsyncSession, session_postgres: AsyncSession, session_perco: AsyncSession):
         self.session_nitro = session_nitro
+        self.session_postgres = session_postgres
+        self.session_perco = session_perco
 
-    async def work_tabel(self, year: int, month: int, current_user: User):
-        data = await StructuralSubdivisionDAO(self.session_nitro).get_one_or_none(
-            fields=[StructuralSubdivisionModel.id],
-            filters={
-                StructuralSubdivisionModel.dean: current_user.platonus_id,
-            }
+    async def work_tabel(self, subdivision_id: int, year: int, month: int, current_user: User):
+        # data = await StructuralSubdivisionDAO(self.session_nitro).get_one_or_none(
+        #     fields=[StructuralSubdivisionModel.id],
+        #     filters={
+        #         StructuralSubdivisionModel.dean: current_user.platonus_id,
+        #     }
+        # )
+
+        # subdivision_id = data.id
+
+        user_data = await UserService(
+            self.session_nitro,
+            self.session_postgres,
+            self.session_perco,
+        ).user_data(current_user)
+
+        if not user_data.subdivision_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        subordinates = await StructuralSubdivisionDAO(self.session_nitro).get_subordinates(
+            user_data.subdivision_id, 'nameru'
         )
+        allowed_ids = [sub['id'] for sub in subordinates]
+        print(allowed_ids)
+        print(subdivision_id)
 
-        subdivision_id = data.id
-
-        if not subdivision_id:
-            raise HTTPException(status_code=404, detail="No subdivision found for this user")
+        if subdivision_id not in allowed_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # === 1. Получаем данные ===
         dao = WorkTabelDAO(self.session_nitro)
@@ -36,10 +55,10 @@ class WorkTabelService:
 
         tutor_ids = list({row["TutorID"] for row in tutors_by_subdivision})
 
-        dean_ids = list({row["dean"] for row in tutors_by_subdivision})
+        # dean_ids = list({row["dean"] for row in tutors_by_subdivision})
 
-        if current_user.platonus_id not in dean_ids:
-            raise HTTPException(status_code=403, detail="Access denied")
+        # if current_user.platonus_id not in dean_ids:
+        #     raise HTTPException(status_code=403, detail="Access denied")
 
         hours_per_day = await dao.get_hours_sum_per_day(subdivision_id, tutor_ids, year, month)
 

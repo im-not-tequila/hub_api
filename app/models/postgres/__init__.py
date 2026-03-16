@@ -13,6 +13,8 @@ from .travel_funding_source import TravelFundingSource
 from .notification import Notification
 from .sample_document_group import SampleDocumentGroup
 from .sample_document import SampleDocument
+from .chat import Chat
+from .chat_message import ChatMessage
 
 
 __all__ = [
@@ -33,5 +35,7 @@ __all__ = [
     'TravelFundingSource',
     'Notification',
     'SampleDocumentGroup',
-    'SampleDocument'
+    'SampleDocument',
+    'Chat',
+    'ChatMessage',
 ]

@@ -8,6 +8,8 @@ from .hidden_document import HiddenDocumentDAO
 from .travel_funding_source import TravelFundingSourceDAO
 from .notification import NotificationDAO
 from .sample_document import SampleDocumentDAO
+from .chat import ChatDAO
+from .chat_message import ChatMessageDAO
 
 
 __all__ = [
@@ -20,5 +22,7 @@ __all__ = [
     'HiddenDocumentDAO',
     'TravelFundingSourceDAO',
     'NotificationDAO',
-    'SampleDocumentDAO'
+    'SampleDocumentDAO',
+    'ChatDAO',
+    'ChatMessageDAO',
 ]

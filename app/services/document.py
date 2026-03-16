@@ -211,6 +211,10 @@ class DocumentService:
         for document in documents:
             sender = await self._collect_sender_by_document(document)
             recipient = await self._collect_recipient(document, tutors_dict, subdivision_dict)
+
+            if not sender.get('platonus_user') or not recipient.get('platonus_user'):
+                continue
+
             approvers_response = await self._collect_approvers_by_document(document, tutors_dict, subdivision_dict)
             is_hidden = await HiddenDocumentDAO(self.session_postgres).is_hidden(current_user.id, document.id)
 

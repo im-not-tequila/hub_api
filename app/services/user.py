@@ -24,6 +24,7 @@ class UserService:
     async def user_data(self, current_user: UserModel) -> UserResponse:
         structural_subdivision = ''
         post = ''
+        subdivision_id = None
 
         if current_user.platonus_id:
             if current_user.is_student:
@@ -50,6 +51,7 @@ class UserService:
                     },
                     fields=[
                         TutorModel.TutorID,
+                        StructuralSubdivisionModel.id,
                         StructuralSubdivisionModel.nameru,
                         StructuralSubdivisionModel.namekz,
                         StructuralSubdivisionModel.nameen,
@@ -60,6 +62,7 @@ class UserService:
                 )
 
                 for _tutor, subdivision, position in rows:
+                    subdivision_id = subdivision.id
                     structural_subdivision = subdivision.nameru
                     post = position.NameRU if position else ''
 
@@ -87,6 +90,7 @@ class UserService:
             lastname=lastname,
             patronymic=patronymic,
             structural_subdivision=structural_subdivision,
+            subdivision_id=subdivision_id,
             post=post
         )
 
