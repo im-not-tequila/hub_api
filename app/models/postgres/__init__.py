@@ -15,6 +15,11 @@ from .sample_document_group import SampleDocumentGroup
 from .sample_document import SampleDocument
 from .chat import Chat
 from .chat_message import ChatMessage
+from .calendar_event_manager import (
+    CalendarEventManager,
+    CalendarEventPlace,
+    CalendarEventType,
+)
 
 
 __all__ = [
@@ -38,4 +43,8 @@ __all__ = [
     'SampleDocument',
     'Chat',
     'ChatMessage',
+    'CalendarEventManager',
+    'CalendarEventMediaHistory',
+    'CalendarEventPlace',
+    'CalendarEventType',
 ]

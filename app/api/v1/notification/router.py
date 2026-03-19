@@ -6,7 +6,7 @@ from typing import Optional, List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Cookie, Depends
 
 from app.db.redis_connection import redis_client
-from app.api.v1.auth.deps import get_current_user
+from app.api.v1.auth.deps import get_current_user, get_current_user_ws
 from app.schemas import NotificationResponse
 from app.models.postgres import User as UserModel
 from app.db.session import get_postgres_session
@@ -21,9 +21,8 @@ router = APIRouter(tags=["notifications"])
 async def websocket_endpoint(
         websocket: WebSocket,
         refresh_token: Optional[str] = Cookie(None),
-        user: UserModel = Depends(get_current_user)
+        user: UserModel = Depends(get_current_user_ws)
 ):
-    # ✅ токен приходит из cookie
     if not refresh_token:
         await websocket.close(code=1008)
         return

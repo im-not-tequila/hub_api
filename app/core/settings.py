@@ -40,6 +40,8 @@ class Settings(BaseSettings):
 
     CURRENT_DIRECTORY: ClassVar[Path] = Path(__file__).resolve().parent.parent.parent
     STORAGE_DIRECTORY: ClassVar[Path] = CURRENT_DIRECTORY / "storage"
+    GOOGLE_PLAY_APP_LINK: ClassVar[str] = "https://play.google.com/store/apps/details?id=com.nureek2001.ShakarimApp&pcampaignid=web_share"
+    APP_STORE_APP_LINK: ClassVar[str] = "https://apps.apple.com/kz/app/shakarim-university/id6753332756"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

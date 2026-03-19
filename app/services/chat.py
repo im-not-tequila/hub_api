@@ -1,10 +1,15 @@
-from fastapi import HTTPException
+import json
 
+from fastapi import HTTPException
+from fastapi import WebSocket, WebSocketDisconnect
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dao.postgres.chat import ChatDAO
 from app.dao.postgres.chat_message import ChatMessageDAO
 from app.dao.mysql import TutorDAO
+from app.db.redis_connection import redis_client
 from app.models.postgres import User as UserModel
 
 
@@ -13,6 +18,57 @@ class ChatService:
         self.chat_dao = ChatDAO(session_postgres)
         self.message_dao = ChatMessageDAO(session_postgres)
         self.session_nitro = session_nitro
+
+    async def get_chat_users(self, current_user: UserModel) -> list[dict]:
+        stmt = (
+            select(UserModel).where(
+                UserModel.platonus_id.isnot(None),
+                UserModel.is_student == False,
+                UserModel.id != current_user.id,
+            )
+        )
+        postgres_session = self.chat_dao.session
+        result = await postgres_session.execute(stmt)
+        pg_users = result.scalars().all()
+
+        if not pg_users:
+            return []
+
+        platonus_to_pg = {u.platonus_id: u.id for u in pg_users}
+        platonus_ids = list(platonus_to_pg.keys())
+
+        tutor_dao = TutorDAO(self.session_nitro)
+        tutor_rows = await tutor_dao.get_tutors_with_positions_by_ids(platonus_ids)
+
+        result_list: list[dict] = []
+        for tutor, position in tutor_rows:
+            pg_user_id = platonus_to_pg.get(tutor.TutorID)
+            if pg_user_id is None:
+                continue
+
+            firstname = (tutor.firstname or "").strip().capitalize()
+            lastname = (tutor.lastname or "").strip().capitalize()
+            patronymic = (tutor.patronymic or "").strip().capitalize()
+
+            first_initial = f"{firstname[0].upper()}." if firstname else ""
+            patronymic_initial = f"{patronymic[0].upper()}." if patronymic else ""
+            shortname = f"{lastname} {first_initial}{patronymic_initial}".strip()
+
+            post = position.NameRU if position else None
+
+            result_list.append(
+                {
+                    "id": pg_user_id,
+                    "firstname": firstname,
+                    "lastname": lastname,
+                    "shortname": shortname,
+                    "is_online": False,
+                    "last_seen": None,
+                    "post": post,
+                }
+            )
+
+        return result_list
 
     async def get_chats(self, current_user: UserModel) -> list[dict]:
         chat_rows = await self.chat_dao.get_user_chats(current_user.id)
@@ -85,6 +141,17 @@ class ChatService:
             text=text,
         )
 
+        recipient_id = chat.user2_id if chat.user1_id == current_user.id else chat.user1_id
+        await redis_client.publish(
+            f"chat:messages:{recipient_id}",
+            json.dumps({
+                "type": "new_message",
+                "chat_id": chat_id,
+                "message_id": message.id,
+                "sender_id": current_user.id,
+            }),
+        )
+
         return {
             "id": message.id,
             "chat_id": message.chat_id,
@@ -119,6 +186,30 @@ class ChatService:
         count = await self.message_dao.mark_as_read(chat_id, current_user.id)
         return {"marked_count": count}
 
+    async def handle_websocket(
+        self,
+        *,
+        websocket: WebSocket,
+        user: UserModel,
+        refresh_token: str | None,
+    ) -> None:
+        if not refresh_token or not user:
+            await websocket.close(code=1008)
+            return
+
+        await websocket.accept()
+
+        pubsub = redis_client.pubsub()
+        await pubsub.subscribe(f"chat:messages:{user.id}")
+
+        try:
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    await websocket.send_text(message["data"])
+        except WebSocketDisconnect:
+            await pubsub.unsubscribe(f"chat:messages:{user.id}")
+            await pubsub.close()
+
     async def _get_participants_map(self, user_ids: list[int]) -> dict:
         """Батчем получает данные участников: postgres id + ФИО/должность из MySQL."""
         from app.dao.postgres import UserDAO
@@ -129,7 +220,6 @@ class ChatService:
             "firstname": "Неизвестный",
             "lastname": "Пользователь",
             "shortname": "Пользователь",
-            "avatar": None,
             "is_online": False,
             "last_seen": None,
             "post": None,
@@ -174,7 +264,6 @@ class ChatService:
                     "firstname": firstname,
                     "lastname": lastname,
                     "shortname": shortname,
-                    "avatar": None,
                     "is_online": False,
                     "last_seen": None,
                     "post": position.NameRU if position else None,

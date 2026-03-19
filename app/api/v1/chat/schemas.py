@@ -8,7 +8,6 @@ class ChatUserResponse(BaseModel):
     firstname: str
     lastname: str
     shortname: str
-    avatar: Optional[str] = None
     is_online: bool = False
     last_seen: Optional[str] = None
     post: Optional[str] = None

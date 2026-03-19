@@ -7,6 +7,8 @@ from app.api.v1.notification.router import router as notification_router
 from app.api.v1.work_tabel.router import router as work_tabel_router
 from app.api.v1.structural_subdivision.router import router as structural_subdivision_router
 from app.api.v1.chat.router import router as chat_router
+from app.api.v1.app_links.router import router as app_links_router
+from app.api.v1.calendar.router import router as calendar_router
 
 api_router = APIRouter()
 
@@ -23,3 +25,6 @@ api_router.include_router(work_tabel_router, prefix="/v1/work-tabel", tags=["Wor
 api_router.include_router(structural_subdivision_router, prefix="/v1/structural-subdivisions", tags=["StructuralSubdivision"])
 
 api_router.include_router(chat_router, prefix="/v1/chat", tags=["Chat"])
+
+api_router.include_router(app_links_router, prefix="/v1/app", tags=["AppLinks"])
+api_router.include_router(calendar_router, prefix="/v1/calendar", tags=["Calendar"])

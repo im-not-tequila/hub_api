@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from sqlalchemy import Integer, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -5,6 +7,12 @@ from app.db.postgres_connection import PostgresBase
 # from app.models.postgres.user_role import UserRole
 # from app.models.postgres.user_info import UserInfo
 from .timestamp_mixin import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.postgres.calendar_event_manager import CalendarEventManager
+    from app.models.postgres.hidden_document import HiddenDocument
+    from app.models.postgres.user_info import UserInfo
+    from app.models.postgres.user_role import UserRole
 
 
 class User(PostgresBase, TimestampMixin):
@@ -52,6 +60,13 @@ class User(PostgresBase, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin"
+    )
+
+    created_calendar_events: Mapped[list["CalendarEventManager"]] = relationship(
+        "CalendarEventManager",
+        back_populates="creator_user",
+        foreign_keys="CalendarEventManager.creator_user_id",
+        lazy="selectin",
     )
 
     def __str__(self):
