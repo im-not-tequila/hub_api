@@ -138,3 +138,21 @@ class DocumentSignRequest(BaseModel):
     resolution: str | None
     executors: List[int]
     signature: str
+
+
+class NormativeDocumentSubcategory(BaseModel):
+    id: int
+    name: str
+
+
+class NormativeDocumentCategory(BaseModel):
+    id: int
+    name: str
+    subcategories: List[NormativeDocumentSubcategory] = Field(default_factory=list)
+
+
+class NormativeDocumentItem(BaseModel):
+    id: int
+    name: str
+    subcategory_id: int
+    category_id: int

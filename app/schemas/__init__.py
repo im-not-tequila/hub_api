@@ -10,7 +10,10 @@ from .document import (
     Person,
     ApproverPerson,
     DocumentSignRequest,
-    SampleDocument
+    SampleDocument,
+    NormativeDocumentCategory,
+    NormativeDocumentSubcategory,
+    NormativeDocumentItem,
 )
 from .auth import (NcalayerVerifyRequest, NcalayerVerifyResponse, PlatonusLoginRequest, PlatonusLoginResponse,
                    GetChallengeResponse, RefreshToken, RefreshTokenResponse )
@@ -38,5 +41,8 @@ __all__ = [
     'BarrierResponse',
     'WorkingHoursResponse',
     'NotificationResponse',
-    'SampleDocument'
+    'SampleDocument',
+    'NormativeDocumentCategory',
+    'NormativeDocumentSubcategory',
+    'NormativeDocumentItem',
 ]

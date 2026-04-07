@@ -2,6 +2,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from app.core.settings import get_settings
+from app.core.ssh_mysql_port import get_ssh_mysql_local_port
 
 
 settings = get_settings()
@@ -15,7 +16,7 @@ database_perco = settings.MYSQL_DATABASE_PERCO
 
 if settings.ssh_enabled:
     host = "127.0.0.1"
-    port = 3307
+    port = get_ssh_mysql_local_port()
 
 DATABASE_URL_NITRO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_nitro}"
 DATABASE_URL_PERCO = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{database_perco}"

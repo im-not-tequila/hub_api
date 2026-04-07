@@ -13,6 +13,9 @@ from .travel_funding_source import TravelFundingSource
 from .notification import Notification
 from .sample_document_group import SampleDocumentGroup
 from .sample_document import SampleDocument
+from .normative_document_category import NormativeDocumentCategory
+from .normative_document_subcategory import NormativeDocumentSubcategory
+from .normative_document import NormativeDocument
 from .chat import Chat
 from .chat_message import ChatMessage
 from .calendar_event_manager import (
@@ -41,6 +44,9 @@ __all__ = [
     'Notification',
     'SampleDocumentGroup',
     'SampleDocument',
+    'NormativeDocumentCategory',
+    'NormativeDocumentSubcategory',
+    'NormativeDocument',
     'Chat',
     'ChatMessage',
     'CalendarEventManager',
