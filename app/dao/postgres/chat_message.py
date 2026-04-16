@@ -1,5 +1,6 @@
 from sqlalchemy import select, update as sa_update, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.dao.base import PostgresDao
 from app.models.postgres.chat_message import ChatMessage
@@ -17,6 +18,7 @@ class ChatMessageDAO(PostgresDao):
     ) -> list[ChatMessage]:
         stmt = (
             select(ChatMessage)
+            .options(selectinload(ChatMessage.attachments))
             .where(ChatMessage.chat_id == chat_id)
             .order_by(desc(ChatMessage.created_at))
             .limit(limit)

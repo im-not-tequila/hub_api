@@ -53,6 +53,7 @@ class ChatDAO(PostgresDao):
                 ChatMessage,
                 func.coalesce(unread_subq.c.unread_count, 0).label("unread_count"),
             )
+            .options(selectinload(ChatMessage.attachments))
             .where(or_(Chat.user1_id == user_id, Chat.user2_id == user_id))
             .outerjoin(last_msg_subq, last_msg_subq.c.chat_id == Chat.id)
             .outerjoin(ChatMessage, ChatMessage.id == last_msg_subq.c.last_message_id)

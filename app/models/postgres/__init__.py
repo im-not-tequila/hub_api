@@ -18,6 +18,7 @@ from .normative_document_subcategory import NormativeDocumentSubcategory
 from .normative_document import NormativeDocument
 from .chat import Chat
 from .chat_message import ChatMessage
+from .chat_message_attachment import ChatMessageAttachment
 from .calendar_event_manager import (
     CalendarEventManager,
     CalendarEventPlace,
@@ -50,6 +51,7 @@ __all__ = [
     'NormativeDocument',
     'Chat',
     'ChatMessage',
+    'ChatMessageAttachment',
     'CalendarEventManager',
     'CalendarEventMediaHistory',
     'CalendarEventPlace',

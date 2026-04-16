@@ -1,6 +1,7 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Cookie, Depends, Query, WebSocket
+from fastapi import APIRouter, Cookie, Depends, File, Query, UploadFile, WebSocket
+from fastapi.responses import FileResponse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,7 @@ from .schemas import (
     SendMessageRequest,
     CreateChatRequest,
     MarkAsReadResponse,
+    UploadChatAttachmentResponse,
 )
 
 router = APIRouter()
@@ -71,7 +73,43 @@ async def send_message(
     current_user: UserModel = Depends(get_current_user),
     service: ChatService = Depends(_get_chat_service),
 ):
-    return await service.send_message(current_user, chat_id, body.text)
+    return await service.send_message(
+        current_user=current_user,
+        chat_id=chat_id,
+        text=body.text,
+        attachment_ids=body.attachment_ids,
+    )
+
+
+@router.post(
+    "/chats/{chat_id}/attachments",
+    response_model=UploadChatAttachmentResponse,
+)
+async def upload_attachment(
+    chat_id: int,
+    file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.upload_attachment(
+        current_user=current_user,
+        chat_id=chat_id,
+        file=file,
+    )
+
+
+@router.get("/attachments/{attachment_id}")
+async def get_attachment(
+    attachment_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    payload = await service.get_attachment_file(current_user, attachment_id)
+    return FileResponse(
+        path=payload["path"],
+        media_type=payload["mime_type"],
+        filename=payload["filename"],
+    )
 
 
 @router.put("/chats/{chat_id}/messages/read", response_model=MarkAsReadResponse)

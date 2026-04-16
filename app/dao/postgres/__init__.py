@@ -10,6 +10,7 @@ from .notification import NotificationDAO
 from .sample_document import SampleDocumentDAO
 from .chat import ChatDAO
 from .chat_message import ChatMessageDAO
+from .chat_message_attachment import ChatMessageAttachmentDAO
 
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     'SampleDocumentDAO',
     'ChatDAO',
     'ChatMessageDAO',
+    'ChatMessageAttachmentDAO',
 ]

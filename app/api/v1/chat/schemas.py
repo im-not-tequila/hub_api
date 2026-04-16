@@ -1,6 +1,5 @@
-from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, Literal
 
 
 class ChatUserResponse(BaseModel):
@@ -16,13 +15,32 @@ class ChatUserResponse(BaseModel):
         from_attributes = True
 
 
+class ChatAttachmentResponse(BaseModel):
+    id: int
+    chat_id: int
+    message_id: Optional[int] = None
+    uploader_id: int
+    type: Literal["image", "file"]
+    mime_type: str
+    original_name: str
+    size_bytes: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    url: str
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ChatMessageResponse(BaseModel):
     id: int
     chat_id: int
     sender_id: int
-    text: str
+    text: Optional[str] = None
     is_read: bool
     created_at: Optional[str] = None
+    attachments: list[ChatAttachmentResponse] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -39,7 +57,15 @@ class ChatResponse(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    text: str
+    text: Optional[str] = None
+    attachment_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_payload(self):
+        normalized_text = (self.text or "").strip()
+        if not normalized_text and not self.attachment_ids:
+            raise ValueError("Message must contain text or at least one attachment")
+        return self.model_copy(update={"text": normalized_text or None})
 
 
 class CreateChatRequest(BaseModel):
@@ -48,3 +74,7 @@ class CreateChatRequest(BaseModel):
 
 class MarkAsReadResponse(BaseModel):
     marked_count: int
+
+
+class UploadChatAttachmentResponse(ChatAttachmentResponse):
+    pass

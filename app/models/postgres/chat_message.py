@@ -22,7 +22,7 @@ class ChatMessage(PostgresBase):
     sender_id: Mapped[int] = mapped_column(
         Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False
     )
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false', nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -33,6 +33,13 @@ class ChatMessage(PostgresBase):
     )
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
+    attachments: Mapped[list["ChatMessageAttachment"]] = relationship(
+        "ChatMessageAttachment",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="ChatMessageAttachment.created_at",
+    )
 
     def __repr__(self):
         return f"<ChatMessage id={self.id} chat={self.chat_id} sender={self.sender_id}>"
