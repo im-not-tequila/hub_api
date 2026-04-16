@@ -1,6 +1,7 @@
 import json
 import mimetypes
 import uuid
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from app.models.postgres import User as UserModel
 class ChatService:
     MAX_ATTACHMENT_SIZE_BYTES = 20 * 1024 * 1024
     PRESENCE_CHANNEL = "chat:presence"
-    ONLINE_USERS_KEY = "chat:online_users"
+    PRESENCE_TTL_SECONDS = 45
 
     def __init__(self, session_postgres: AsyncSession, session_nitro: AsyncSession):
         self.chat_dao = ChatDAO(session_postgres)
@@ -308,9 +309,35 @@ class ChatService:
         await self._set_user_online(user.id)
 
         try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    await websocket.send_text(message["data"])
+            async def _forward_pubsub_to_socket():
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        await websocket.send_text(message["data"])
+
+            async def _wait_for_disconnect():
+                while True:
+                    await websocket.receive_text()
+
+            async def _presence_heartbeat():
+                while True:
+                    await asyncio.sleep(self.PRESENCE_TTL_SECONDS // 3)
+                    await self._refresh_presence_lease(user.id)
+
+            forward_task = asyncio.create_task(_forward_pubsub_to_socket())
+            disconnect_task = asyncio.create_task(_wait_for_disconnect())
+            heartbeat_task = asyncio.create_task(_presence_heartbeat())
+
+            done, pending = await asyncio.wait(
+                {forward_task, disconnect_task, heartbeat_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            for task in pending:
+                task.cancel()
+            for task in done:
+                exc = task.exception()
+                if exc and not isinstance(exc, WebSocketDisconnect):
+                    raise exc
         except WebSocketDisconnect:
             pass
         finally:
@@ -448,13 +475,15 @@ class ChatService:
         unique_ids = list(dict.fromkeys(user_ids))
         pipeline = redis_client.pipeline()
         for uid in unique_ids:
-            pipeline.sismember(self.ONLINE_USERS_KEY, str(uid))
+            pipeline.get(self._presence_count_key(uid))
             pipeline.get(self._last_seen_key(uid))
         raw = await pipeline.execute()
 
         result: dict[int, dict] = {}
         for index, uid in enumerate(unique_ids):
-            is_online = bool(raw[index * 2])
+            raw_count = raw[index * 2]
+            count = int(raw_count) if raw_count else 0
+            is_online = count > 0
             last_seen = raw[index * 2 + 1]
             result[uid] = {
                 "is_online": is_online,
@@ -477,11 +506,14 @@ class ChatService:
 
     async def _set_user_online(self, user_id: int):
         connection_count = await redis_client.incr(self._presence_count_key(user_id))
-        await redis_client.sadd(self.ONLINE_USERS_KEY, str(user_id))
+        await self._refresh_presence_lease(user_id)
         await redis_client.delete(self._last_seen_key(user_id))
 
         if connection_count == 1:
             await self._publish_presence_event(user_id=user_id, is_online=True, last_seen=None)
+
+    async def _refresh_presence_lease(self, user_id: int):
+        await redis_client.expire(self._presence_count_key(user_id), self.PRESENCE_TTL_SECONDS)
 
     async def _set_user_offline(self, user_id: int):
         count_key = self._presence_count_key(user_id)
@@ -492,7 +524,6 @@ class ChatService:
         connection_count = await redis_client.decr(count_key)
         if connection_count <= 0:
             await redis_client.delete(count_key)
-            await redis_client.srem(self.ONLINE_USERS_KEY, str(user_id))
             last_seen = datetime.utcnow().isoformat()
             await redis_client.set(self._last_seen_key(user_id), last_seen)
             await self._publish_presence_event(
