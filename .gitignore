@@ -82,7 +82,6 @@ docker-compose.override.yml
 app/models/generated_models.py
 test.py
 storage/
-migrations/versions
 test_2.py
 test_3.py
 tabel.html
