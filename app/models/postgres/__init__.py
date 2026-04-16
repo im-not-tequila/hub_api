@@ -23,6 +23,7 @@ from .calendar_event_manager import (
     CalendarEventPlace,
     CalendarEventType,
 )
+from .employee_custom_schedule import EmployeeCustomSchedule
 
 
 __all__ = [
@@ -53,4 +54,5 @@ __all__ = [
     'CalendarEventMediaHistory',
     'CalendarEventPlace',
     'CalendarEventType',
+    'EmployeeCustomSchedule',
 ]

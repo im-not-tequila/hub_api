@@ -7,6 +7,10 @@ from app.schemas import UserResponse
 class MeResponse(BaseModel):
     user: UserResponse
 
+class PlatonusIdResponse(BaseModel):
+    platonus_id: Optional[int] = None
+
+
 class TutorWithPosition(BaseModel):
     tutor_id: int
     lastname: Optional[str]

@@ -40,8 +40,8 @@ class WorkTabelService:
             user_data.subdivision_id, 'nameru'
         )
         allowed_ids = [sub['id'] for sub in subordinates]
-        print(allowed_ids)
-        print(subdivision_id)
+        # print(allowed_ids)
+        # print(subdivision_id)
 
         if subdivision_id not in allowed_ids:
             raise HTTPException(status_code=403, detail="Access denied")

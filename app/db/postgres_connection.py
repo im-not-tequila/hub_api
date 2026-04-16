@@ -2,12 +2,17 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine, AsyncSession
 
 from app.core.settings import get_settings
+from app.core.ssh_postgres_port import get_ssh_postgres_local_port
 
 
 settings = get_settings()
 
-host = settings.PG_HOST
-port = settings.PG_PORT
+if settings.ssh_enabled:
+    host = "127.0.0.1"
+    port = get_ssh_postgres_local_port()
+else:
+    host = settings.PG_HOST
+    port = settings.PG_PORT
 user = settings.PG_USER
 password = settings.PG_PASSWORD
 database = settings.PG_DATABASE

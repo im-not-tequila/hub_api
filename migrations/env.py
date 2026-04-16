@@ -31,6 +31,7 @@ from app.models.postgres.custom_document_templates import CustomDocumentTemplate
 from app.models.postgres.chat import Chat
 from app.models.postgres.chat_message import ChatMessage
 from app.models.postgres.calendar_event_manager import CalendarEventManager, CalendarEventPlace, CalendarEventType
+from app.models.postgres.employee_custom_schedule import EmployeeCustomSchedule
 
 
 config = context.config

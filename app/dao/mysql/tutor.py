@@ -45,6 +45,23 @@ class TutorDAO(MySQLDao):
 
         return result.mappings().all()  # вернем как список словарей
 
+    async def get_tutor_ids_having_pps(self, tutor_ids: list[int]) -> set[int]:
+        """TutorID, у которых есть хотя бы одна не удалённая запись в tutor_cafedra (ППС)."""
+        if not tutor_ids:
+            return set()
+        stmt = (
+            select(Tutor.TutorID)
+            .join(TutorCafedra, TutorCafedra.tutorID == Tutor.TutorID)
+            .where(
+                Tutor.TutorID.in_(tutor_ids),
+                TutorCafedra.deleted == 0,
+                Tutor.deleted == 0,
+            )
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return {int(row[0]) for row in result.all()}
+
     async def get_faculty_and_cafedra_managers(self, tutor_id: int):
         stmt = (
             select(

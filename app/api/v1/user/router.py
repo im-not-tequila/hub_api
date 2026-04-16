@@ -1,10 +1,11 @@
 import imghdr
 import datetime
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import List
 
 from app.models.postgres import User as UserModel
+from app.dao.migrate_user import MigrateUserMysqlToPostgres
 
 from app.models.mysql.nitro import (
     Tutor as TutorModel,
@@ -16,7 +17,7 @@ from app.api.v1.auth.deps import get_current_user
 from app.schemas import UserResponse, BarrierResponse, WorkingHoursResponse
 from app.dao.mysql import TutorDAO
 from app.dao.postgres import UserDAO
-from .schemas import TutorWithPosition
+from .schemas import PlatonusIdResponse, TutorWithPosition
 from app.services.user import UserService
 from app.db.session import get_nitro_session, get_postgres_session, get_perco_session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,17 +45,17 @@ async def get_me(
 
 
 @router.get(
-    path="/all_tutors_with_position",
+    path="/all_employees_with_position",
     response_model=List[TutorWithPosition]
 )
-async def get_all_tutors_with_position(
+async def get_all_employees_with_position(
     lang: str = Query('ru', description="Язык: ru, kz, en"),
     session_nitro: AsyncSession = Depends(get_nitro_session),
     current_user: UserModel = Depends(get_current_user)
 ):
     tutor_dao = TutorDAO(session_nitro)
 
-    all_tutors_and_position = await tutor_dao.join_structural_subdivision_and_tutor_positions_deans(
+    all_employees_and_position = await tutor_dao.join_structural_subdivision_and_tutor_positions_deans(
         filters={
             StructuralSubdivisionModel.subdivision_type: [0, 1, 2, 3]
         },
@@ -93,10 +94,25 @@ async def get_all_tutors_with_position(
             "structural_subdivision_name": getattr(subdivision, structural_subdivision_name_field),
             "tutor_position_name": getattr(position, tutor_position_name_field)
         }
-        for tutor, subdivision, position in all_tutors_and_position
+        for tutor, subdivision, position in all_employees_and_position
     ]
 
     return response
+
+
+@router.get(
+    path="/{user_id}/platonus_id",
+    response_model=PlatonusIdResponse,
+)
+async def get_platonus_id_by_user_id(
+        user_id: int,
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+        current_user: UserModel = Depends(get_current_user),
+):
+    user = await UserDAO(session_postgres).get_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return PlatonusIdResponse(platonus_id=user.platonus_id)
 
 
 @router.get(
@@ -112,6 +128,15 @@ async def avatar(
     tutor_dao = TutorDAO(session_nitro)
 
     user = await user_dao.get_by_id(user_id)
+    
+    if user is None:
+        user = await MigrateUserMysqlToPostgres(
+            session_nitro=session_nitro,
+            session_postgres=session_postgres,
+        ).migrate_by_tutor_id(tutor_id=user_id)
+
+        if user is None:
+            return Response(status_code=404)
 
     tutor = await tutor_dao.get_one_or_none(
         fields=[TutorModel.photo],
@@ -120,7 +145,7 @@ async def avatar(
         }
     )
 
-    if not tutor.photo or tutor.photo == b"0":
+    if not tutor or not tutor.photo or tutor.photo == b"0":
         return Response(status_code=204)
 
     image_type = imghdr.what(None, h=tutor.photo)

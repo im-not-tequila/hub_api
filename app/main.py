@@ -15,6 +15,7 @@ from app.services.admin import (UserAdmin, DocumentAdmin, DocumentTypeGroupAdmin
                                 RoleAdmin, ApproverAdmin, RoleDocumentTypeGroupAdmin, UserRoleAdmin)
 from app.core.settings import get_settings
 from app.core.ssh_mysql_port import get_ssh_mysql_local_port
+from app.core.ssh_postgres_port import get_ssh_postgres_local_port
 
 
 def wait_for_port(host, port, timeout=15):
@@ -72,28 +73,46 @@ admin.add_view(ApproverAdmin)
 
 
 
-ssh_proc = None  # глобально
+ssh_mysql_proc = None  # глобально
+ssh_postgres_proc = None  # глобально
 
 @app.on_event("startup")
 async def startup_event():
-    global ssh_proc
+    global ssh_mysql_proc, ssh_postgres_proc
     if settings.ssh_enabled:
-        local_port = get_ssh_mysql_local_port()
-        ssh_proc = subprocess.Popen([
+        mysql_local_port = get_ssh_mysql_local_port()
+        ssh_mysql_proc = subprocess.Popen([
             "ssh",
             "-i", settings.SSH_KEY_PATH,
+            "-p", str(settings.SSH_PORT or 22),
+            "-o", "ExitOnForwardFailure=yes",
             "-N",
-            "-L", f"127.0.0.1:{local_port}:{settings.MYSQL_HOST}:{settings.MYSQL_PORT}",
+            "-L", f"127.0.0.1:{mysql_local_port}:{settings.MYSQL_HOST}:{settings.MYSQL_PORT}",
             f"{settings.SSH_USER}@{settings.SSH_HOST}"
         ])
 
-        wait_for_port("127.0.0.1", local_port)
+        wait_for_port("127.0.0.1", mysql_local_port)
+
+        pg_local_port = get_ssh_postgres_local_port()
+        ssh_postgres_proc = subprocess.Popen([
+            "ssh",
+            "-i", settings.SSH_KEY_PATH,
+            "-p", str(settings.SSH_PORT or 22),
+            "-o", "ExitOnForwardFailure=yes",
+            "-N",
+            "-L", f"127.0.0.1:{pg_local_port}:{settings.PG_HOST}:{settings.PG_PORT}",
+            f"{settings.SSH_USER}@{settings.SSH_HOST}"
+        ])
+
+        wait_for_port("127.0.0.1", pg_local_port)
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    global ssh_proc
-    if ssh_proc:
-        ssh_proc.terminate()
+    global ssh_mysql_proc, ssh_postgres_proc
+    if ssh_mysql_proc:
+        ssh_mysql_proc.terminate()
+    if ssh_postgres_proc:
+        ssh_postgres_proc.terminate()
 
 @app.get("/")
 async def root():

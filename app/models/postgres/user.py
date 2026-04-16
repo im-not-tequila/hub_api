@@ -10,6 +10,7 @@ from .timestamp_mixin import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.postgres.calendar_event_manager import CalendarEventManager
+    from app.models.postgres.employee_custom_schedule import EmployeeCustomSchedule
     from app.models.postgres.hidden_document import HiddenDocument
     from app.models.postgres.user_info import UserInfo
     from app.models.postgres.user_role import UserRole
@@ -66,6 +67,13 @@ class User(PostgresBase, TimestampMixin):
         "CalendarEventManager",
         back_populates="creator_user",
         foreign_keys="CalendarEventManager.creator_user_id",
+        lazy="selectin",
+    )
+
+    custom_schedules: Mapped[list["EmployeeCustomSchedule"]] = relationship(
+        "EmployeeCustomSchedule",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="selectin",
     )
 
