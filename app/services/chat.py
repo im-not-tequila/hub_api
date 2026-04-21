@@ -477,14 +477,25 @@ class ChatService:
         for uid in unique_ids:
             pipeline.get(self._presence_count_key(uid))
             pipeline.get(self._last_seen_key(uid))
+            pipeline.ttl(self._presence_count_key(uid))
         raw = await pipeline.execute()
 
         result: dict[int, dict] = {}
         for index, uid in enumerate(unique_ids):
-            raw_count = raw[index * 2]
+            raw_count = raw[index * 3]
             count = int(raw_count) if raw_count else 0
             is_online = count > 0
-            last_seen = raw[index * 2 + 1]
+            last_seen = raw[index * 3 + 1]
+            ttl_raw = raw[index * 3 + 2]
+            ttl = int(ttl_raw) if ttl_raw is not None else -2
+
+            # Heal stale presence keys left without TTL by older logic.
+            # This prevents users from hanging "online" indefinitely.
+            if is_online and ttl < 0:
+                await redis_client.expire(
+                    self._presence_count_key(uid),
+                    self.PRESENCE_TTL_SECONDS,
+                )
             result[uid] = {
                 "is_online": is_online,
                 "last_seen": None if is_online else last_seen,
@@ -505,9 +516,14 @@ class ChatService:
         )
 
     async def _set_user_online(self, user_id: int):
-        connection_count = await redis_client.incr(self._presence_count_key(user_id))
-        await self._refresh_presence_lease(user_id)
-        await redis_client.delete(self._last_seen_key(user_id))
+        count_key = self._presence_count_key(user_id)
+        last_seen_key = self._last_seen_key(user_id)
+        pipeline = redis_client.pipeline(transaction=True)
+        pipeline.incr(count_key)
+        pipeline.expire(count_key, self.PRESENCE_TTL_SECONDS)
+        pipeline.delete(last_seen_key)
+        result = await pipeline.execute()
+        connection_count = int(result[0])
 
         if connection_count == 1:
             await self._publish_presence_event(user_id=user_id, is_online=True, last_seen=None)
