@@ -31,6 +31,22 @@ class TutorListItem(BaseModel):
     position_name: str | None = None
 
 
+class TutorAcademicPositionRateItem(BaseModel):
+    cafedra_id: int | None = None
+    cafedra_name: str | None = None
+    position_name: str | None = None
+    rate: float | None = None
+
+
+class TutorAcademicListItem(BaseModel):
+    platonus_id: int
+    user_id: int | None = None
+    lastname: str | None = None
+    firstname: str | None = None
+    patronomic: str | None = None
+    positions: list[TutorAcademicPositionRateItem]
+
+
 class TutorDetailItem(BaseModel):
     iin: str | None = None
     platonus_id: int
@@ -47,6 +63,21 @@ class TutorDetailItem(BaseModel):
     rate: float | None = None
     nationality: str | None = None
     position_name: str | None = None
+
+
+class TutorAcademicDetailItem(BaseModel):
+    iin: str | None = None
+    platonus_id: int
+    user_id: int | None = None
+    lastname: str | None = None
+    firstname: str | None = None
+    patronomic: str | None = None
+    mobile_phone: str | None = None
+    is_married: int | None = None
+    address: str | None = None
+    birth_date: datetime.date | None = None
+    nationality: str | None = None
+    positions: list[TutorAcademicPositionRateItem]
 
 
 class PersonControlItem(BaseModel):
@@ -84,6 +115,18 @@ class TutorFirstInItem(BaseModel):
     perco_status_name: str | None = None
     work_schedule: str | None = None
     work_schedule_type: WorkScheduleType | None = None
+
+
+class TutorAcademicFirstInItem(BaseModel):
+    platonus_id: int
+    user_id: int | None = None
+    lastname: str | None = None
+    firstname: str | None = None
+    patronomic: str | None = None
+    createdate: datetime.datetime | None = None
+    arrival_status: ArrivalStatus | None = None
+    perco_status_name: str | None = None
+    positions: list[TutorAcademicPositionRateItem]
 
 
 class EmployeePunctualityStatsItem(BaseModel):

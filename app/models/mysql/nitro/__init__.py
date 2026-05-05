@@ -8,6 +8,7 @@ from .faculty import Faculty
 from .tutor_cafedra import TutorCafedra
 from .tutor_position import TutorPositions
 from .building import Building
+from .center_nationality import CenterNationality
 
 
 __all__ = [
@@ -20,5 +21,6 @@ __all__ = [
     'Faculty',
     'TutorCafedra',
     'TutorPositions',
-    'Building'
+    'Building',
+    'CenterNationality'
 ]

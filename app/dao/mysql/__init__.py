@@ -3,6 +3,8 @@ from .tutor import TutorDAO
 from .persontabel import PersontabelDAO
 from .work_tabel import WorkTabelDAO
 from .structural_subdivision import StructuralSubdivisionDAO
+from .monitoring import MonitoringDAO
+from .cafedra import CafedraDAO
 
 
 __all__ = [
@@ -10,5 +12,7 @@ __all__ = [
     'TutorDAO',
     'PersontabelDAO',
     'WorkTabelDAO',
-    'StructuralSubdivisionDAO'
+    'StructuralSubdivisionDAO',
+    'MonitoringDAO',
+    'CafedraDAO',
 ]
