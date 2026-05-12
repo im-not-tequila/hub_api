@@ -110,6 +110,7 @@ class TutorFirstInItem(BaseModel):
     absence_status: str | None = None
     structural_subdivision_name: str | None = None
     position_name: str | None = None
+    rate: float | None = None
     createdate: datetime.datetime | None = None
     arrival_status: ArrivalStatus | None = None
     perco_status_name: str | None = None
@@ -136,6 +137,8 @@ class EmployeePunctualityStatsItem(BaseModel):
     structural_subdivision_id: int | None = None
     structural_subdivision_name: str | None = None
     position_name: str | None = None
+    rate: float | None = None
+    perco_status_name: str | None = None
     before_shift_start_count: int
     within_grace_period_count: int
     late_count: int

@@ -214,6 +214,8 @@ class MonitoringPunctualityMixin:
             staff_row = active_staff_by_platonus.get(ipid)
             if staff_row is not None and row.get("absence_status") is None:
                 row["absence_status"] = staff_row.get("absence_status")
+            if staff_row is not None and row.get("rate") is None:
+                row["rate"] = staff_row.get("rate")
             existing_platonus_ids.add(ipid)
             merged_rows.append(row)
 
@@ -233,6 +235,7 @@ class MonitoringPunctualityMixin:
                     "absence_status": staff_row.get("absence_status"),
                     "structural_subdivision_name": staff_row.get("structural_subdivision_name"),
                     "position_name": staff_row.get("position_name"),
+                    "rate": staff_row.get("rate"),
                     "createdate": None,
                     "perco_status_name": "—",
                 }
@@ -291,6 +294,7 @@ class MonitoringPunctualityMixin:
                 item.get("structural_subdivision_name")
             )
             item["position_name"] = uppercase_first(item.get("position_name"))  # type: ignore[arg-type]
+            item["rate"] = float(item.get("rate")) if item.get("rate") is not None else None
             data.append(item)
 
         return [TutorFirstInItem.model_validate(item) for item in data]
@@ -374,6 +378,7 @@ class MonitoringPunctualityMixin:
                     ),
                     "Подразделение": row.structural_subdivision_name,
                     "Должность": row.position_name,
+                    "Ставка": row.rate,
                     "Статус": row.absence_status or "Штатный режим",
                     "Дата первого входа": (
                         row.createdate.strftime("%Y-%m-%d %H:%M:%S")
@@ -391,6 +396,7 @@ class MonitoringPunctualityMixin:
             "ФИО",
             "Подразделение",
             "Должность",
+            "Ставка",
             "Статус",
             "Дата первого входа",
             "Статус PERCo",
@@ -492,6 +498,7 @@ class MonitoringPunctualityMixin:
                     staff_item.get("structural_subdivision_name")
                 ),
                 "position_name": uppercase_first(staff_item.get("position_name")),  # type: ignore[arg-type]
+                "rate": float(staff_item.get("rate")) if staff_item.get("rate") is not None else None,
                 "before_shift_start_count": before_shift_start_count,
                 "within_grace_period_count": within_grace_period_count,
                 "late_count": late_count,
@@ -613,6 +620,8 @@ class MonitoringPunctualityMixin:
                             staff_row.get("structural_subdivision_name")
                         ),
                         "position_name": uppercase_first(staff_row.get("position_name")),  # type: ignore[arg-type]
+                        "rate": float(staff_row.get("rate")) if staff_row.get("rate") is not None else None,
+                        "perco_status_name": staff_row.get("perco_status_name") or "—",
                         "before_shift_start_count": before_shift_start_count,
                         "within_grace_period_count": within_grace_period_count,
                         "late_count": late_count,

@@ -76,6 +76,7 @@ class MonitoringDAO:
                 self.tutors.c.firstname.label("firstname"),
                 self.tutors.c.patronymic.label("patronomic"),
                 func.max(self.absence.c.type).label("absence_status"),
+                func.max(self.status.c.name).label("perco_status_name"),
                 self.tutors.c.departmentid.label("structural_subdivision_id"),
                 self.structural_subdivision.c.nameru.label("structural_subdivision_name"),
                 self.tutors.c.mobilePhone.label("mobile_phone"),
@@ -102,6 +103,17 @@ class MonitoringDAO:
                 .outerjoin(
                     self.absence,
                     self._active_absence_join_condition(self.tutors.c.TutorID),
+                )
+                .outerjoin(
+                    self.tutor_structuralsubdivision,
+                    and_(
+                        self.tutor_structuralsubdivision.c.TutorID == self.tutors.c.TutorID,
+                        self.tutor_structuralsubdivision.c.deleted == 0,
+                    ),
+                )
+                .outerjoin(
+                    self.status,
+                    self.tutor_structuralsubdivision.c.type == self.status.c.id,
                 )
             )
             .where(self.tutors.c.deleted == 0)
@@ -305,6 +317,7 @@ class MonitoringDAO:
                 func.max(self.absence.c.type).label("absence_status"),
                 self.structural_subdivision.c.nameru.label("structural_subdivision_name"),
                 self.tutor_positions.c.NameRU.label("position_name"),
+                self.tutors.c.RATE.label("rate"),
                 self.personcontrols.c.createdate.label("createdate"),
                 self.status.c.name.label("perco_status_name"),
             )
