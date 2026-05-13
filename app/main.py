@@ -16,6 +16,7 @@ from app.services.admin import (UserAdmin, DocumentAdmin, DocumentTypeGroupAdmin
 from app.core.settings import get_settings
 from app.core.ssh_mysql_port import get_ssh_mysql_local_port
 from app.core.ssh_postgres_port import get_ssh_postgres_local_port
+from app.core.ssh_redis_port import get_ssh_redis_local_port
 
 
 def wait_for_port(host, port, timeout=15):
@@ -75,10 +76,11 @@ admin.add_view(ApproverAdmin)
 
 ssh_mysql_proc = None  # глобально
 ssh_postgres_proc = None  # глобально
+ssh_redis_proc = None  # глобально
 
 @app.on_event("startup")
 async def startup_event():
-    global ssh_mysql_proc, ssh_postgres_proc
+    global ssh_mysql_proc, ssh_postgres_proc, ssh_redis_proc
     if settings.ssh_enabled:
         mysql_local_port = get_ssh_mysql_local_port()
         ssh_mysql_proc = subprocess.Popen([
@@ -106,13 +108,28 @@ async def startup_event():
 
         wait_for_port("127.0.0.1", pg_local_port)
 
+        redis_local_port = get_ssh_redis_local_port()
+        ssh_redis_proc = subprocess.Popen([
+            "ssh",
+            "-i", settings.SSH_KEY_PATH,
+            "-p", str(settings.SSH_PORT or 22),
+            "-o", "ExitOnForwardFailure=yes",
+            "-N",
+            "-L", f"127.0.0.1:{redis_local_port}:{settings.REDIS_HOST}:{settings.REDIS_PORT}",
+            f"{settings.SSH_USER}@{settings.SSH_HOST}"
+        ])
+
+        wait_for_port("127.0.0.1", redis_local_port)
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    global ssh_mysql_proc, ssh_postgres_proc
+    global ssh_mysql_proc, ssh_postgres_proc, ssh_redis_proc
     if ssh_mysql_proc:
         ssh_mysql_proc.terminate()
     if ssh_postgres_proc:
         ssh_postgres_proc.terminate()
+    if ssh_redis_proc:
+        ssh_redis_proc.terminate()
 
 @app.get("/")
 async def root():

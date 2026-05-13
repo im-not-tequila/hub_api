@@ -2,7 +2,7 @@ import json
 import mimetypes
 import uuid
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiofiles
@@ -540,7 +540,7 @@ class ChatService:
         connection_count = await redis_client.decr(count_key)
         if connection_count <= 0:
             await redis_client.delete(count_key)
-            last_seen = datetime.utcnow().isoformat()
+            last_seen = datetime.now(timezone.utc).isoformat()
             await redis_client.set(self._last_seen_key(user_id), last_seen)
             await self._publish_presence_event(
                 user_id=user_id,
