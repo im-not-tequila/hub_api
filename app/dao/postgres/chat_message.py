@@ -18,7 +18,10 @@ class ChatMessageDAO(PostgresDao):
     ) -> list[ChatMessage]:
         stmt = (
             select(ChatMessage)
-            .options(selectinload(ChatMessage.attachments))
+            .options(
+                selectinload(ChatMessage.attachments),
+                selectinload(ChatMessage.reads),
+            )
             .where(ChatMessage.chat_id == chat_id)
             .order_by(desc(ChatMessage.created_at))
             .limit(limit)
@@ -26,6 +29,18 @@ class ChatMessageDAO(PostgresDao):
         )
         result = await self.session.execute(stmt)
         return list(reversed(result.scalars().all()))
+
+    async def get_by_id_with_attachments(self, message_id: int) -> ChatMessage | None:
+        stmt = (
+            select(ChatMessage)
+            .options(
+                selectinload(ChatMessage.attachments),
+                selectinload(ChatMessage.reads),
+            )
+            .where(ChatMessage.id == message_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def mark_as_read(self, chat_id: int, reader_id: int) -> int:
         stmt = (

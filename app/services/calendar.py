@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -44,30 +45,67 @@ class CalendarService:
         self.session_postgres = session_postgres
         self.session_nitro = session_nitro
 
+    @staticmethod
+    def _translate_integrity_error(exc: IntegrityError) -> HTTPException:
+        message = str(exc.orig or exc)
+        if "calendar_event_manager_event_type_id_fkey" in message:
+            return HTTPException(status_code=422, detail="Указан некорректный тип события")
+        if "calendar_event_manager_place_id_fkey" in message:
+            return HTTPException(status_code=422, detail="Указано некорректное место проведения")
+        return HTTPException(
+            status_code=422,
+            detail="Не удалось сохранить событие: переданы некорректные связанные данные",
+        )
+
+    async def _ensure_place_exists(self, place_id: int) -> None:
+        stmt = select(CalendarEventPlace.id).where(
+            CalendarEventPlace.id == place_id,
+            CalendarEventPlace.is_active.is_(True),
+        )
+        result = await self.session_postgres.execute(stmt)
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=422, detail="Указано некорректное место проведения")
+
+    async def _ensure_event_type_exists(self, event_type_id: int) -> None:
+        stmt = select(CalendarEventType.id).where(
+            CalendarEventType.id == event_type_id,
+            CalendarEventType.is_active.is_(True),
+        )
+        result = await self.session_postgres.execute(stmt)
+        if result.scalar_one_or_none() is None:
+            raise HTTPException(status_code=422, detail="Указан некорректный тип события")
+
     async def create_event(
         self,
         *,
         body: CreateCalendarEventRequest,
         current_user: UserModel,
     ) -> CalendarEventResponse:
+        await self._ensure_place_exists(body.place_id)
+        await self._ensure_event_type_exists(body.event_type_id)
+
         dao = PostgresDao(self.session_postgres, CalendarEventManager)
-        event = await dao.add(
-            creator_user_id=current_user.id,
-            structural_subdivision_id=body.structural_subdivision_id,
-            start_datetime=body.start_datetime,
-            end_datetime=body.end_datetime,
-            place_id=body.place_id,
-            title_ru=body.title_ru,
-            title_kz=body.title_kz,
-            title_en=body.title_en,
-            description_ru=body.description_ru or None,
-            description_kz=body.description_kz or None,
-            description_en=body.description_en or None,
-            needs_media_capture=body.needs_media_capture,
-            event_type_id=body.event_type_id,
-            contacts=body.contacts,
-            needs_tech_support=body.needs_tech_support,
-        )
+        try:
+            event = await dao.add(
+                creator_user_id=current_user.id,
+                structural_subdivision_id=body.structural_subdivision_id,
+                start_datetime=body.start_datetime,
+                end_datetime=body.end_datetime,
+                place_id=body.place_id,
+                title_ru=body.title_ru,
+                title_kz=body.title_kz,
+                title_en=body.title_en,
+                description_ru=body.description_ru or None,
+                description_kz=body.description_kz or None,
+                description_en=body.description_en or None,
+                needs_media_capture=body.needs_media_capture,
+                event_type_id=body.event_type_id,
+                contacts=body.contacts,
+                needs_tech_support=body.needs_tech_support,
+            )
+        except IntegrityError as exc:
+            await self.session_postgres.rollback()
+            raise self._translate_integrity_error(exc) from exc
         return CalendarEventResponse.model_validate(event)
 
     async def list_events(
@@ -188,11 +226,20 @@ class CalendarService:
         if event.creator_user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
+        if body.place_id is not None:
+            await self._ensure_place_exists(body.place_id)
+        if body.event_type_id is not None:
+            await self._ensure_event_type_exists(body.event_type_id)
+
         update_data = body.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(event, key, value)
 
-        await self.session_postgres.commit()
+        try:
+            await self.session_postgres.commit()
+        except IntegrityError as exc:
+            await self.session_postgres.rollback()
+            raise self._translate_integrity_error(exc) from exc
         await self.session_postgres.refresh(event)
         return CalendarEventResponse.model_validate(event)
 

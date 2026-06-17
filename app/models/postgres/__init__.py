@@ -16,9 +16,12 @@ from .sample_document import SampleDocument
 from .normative_document_category import NormativeDocumentCategory
 from .normative_document_subcategory import NormativeDocumentSubcategory
 from .normative_document import NormativeDocument
-from .chat import Chat
+from .chat import Chat, ChatType
 from .chat_message import ChatMessage
 from .chat_message_attachment import ChatMessageAttachment
+from .chat_message_read import ChatMessageRead
+from .chat_participant import ChatParticipant, ChatParticipantRole
+from .legacy_chat_message_mapping import LegacyChatMessageMapping
 from .calendar_event_manager import (
     CalendarEventManager,
     CalendarEventPlace,
@@ -50,8 +53,13 @@ __all__ = [
     'NormativeDocumentSubcategory',
     'NormativeDocument',
     'Chat',
+    'ChatType',
     'ChatMessage',
     'ChatMessageAttachment',
+    'ChatMessageRead',
+    'ChatParticipant',
+    'ChatParticipantRole',
+    'LegacyChatMessageMapping',
     'CalendarEventManager',
     'CalendarEventMediaHistory',
     'CalendarEventPlace',

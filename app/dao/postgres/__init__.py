@@ -11,6 +11,8 @@ from .sample_document import SampleDocumentDAO
 from .chat import ChatDAO
 from .chat_message import ChatMessageDAO
 from .chat_message_attachment import ChatMessageAttachmentDAO
+from .chat_message_read import ChatMessageReadDAO
+from .chat_participant import ChatParticipantDAO
 from .monitoring import MonitoringPostgresDAO
 
 
@@ -28,5 +30,7 @@ __all__ = [
     'ChatDAO',
     'ChatMessageDAO',
     'ChatMessageAttachmentDAO',
+    'ChatMessageReadDAO',
+    'ChatParticipantDAO',
     'MonitoringPostgresDAO',
 ]

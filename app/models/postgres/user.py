@@ -10,6 +10,7 @@ from .timestamp_mixin import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.postgres.calendar_event_manager import CalendarEventManager
+    from app.models.postgres.chat_participant import ChatParticipant
     from app.models.postgres.employee_custom_schedule import EmployeeCustomSchedule
     from app.models.postgres.hidden_document import HiddenDocument
     from app.models.postgres.user_info import UserInfo
@@ -74,6 +75,11 @@ class User(PostgresBase, TimestampMixin):
         "EmployeeCustomSchedule",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="selectin",
+    )
+    chat_participations: Mapped[list["ChatParticipant"]] = relationship(
+        "ChatParticipant",
+        foreign_keys="ChatParticipant.user_id",
         lazy="selectin",
     )
 

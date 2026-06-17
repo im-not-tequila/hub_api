@@ -13,9 +13,15 @@ from app.db.session import get_nitro_session, get_postgres_session
 from .schemas import (
     ChatUserResponse,
     ChatResponse,
+    ChatParticipantResponse,
     ChatMessageResponse,
     SendMessageRequest,
+    ForwardMessageRequest,
     CreateChatRequest,
+    CreateGroupChatRequest,
+    UpdateGroupChatRequest,
+    AddChatParticipantsRequest,
+    UpdateChatParticipantRequest,
     MarkAsReadResponse,
     UploadChatAttachmentResponse,
 )
@@ -55,6 +61,92 @@ async def create_chat(
     return await service.create_chat(current_user, body.participant_id)
 
 
+@router.post("/chats/groups", response_model=ChatResponse)
+async def create_group_chat(
+    body: CreateGroupChatRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.create_group_chat(
+        current_user=current_user,
+        title=body.title,
+        participant_ids=body.participant_ids,
+        avatar_url=body.avatar_url,
+    )
+
+
+@router.patch("/chats/{chat_id}", response_model=ChatResponse)
+async def update_group_chat(
+    chat_id: int,
+    body: UpdateGroupChatRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.update_group_chat(
+        current_user=current_user,
+        chat_id=chat_id,
+        title=body.title,
+        avatar_url=body.avatar_url,
+    )
+
+
+@router.get("/chats/{chat_id}/participants", response_model=List[ChatParticipantResponse])
+async def get_chat_participants(
+    chat_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.get_chat_participants(current_user, chat_id)
+
+
+@router.post("/chats/{chat_id}/participants", response_model=List[ChatParticipantResponse])
+async def add_chat_participants(
+    chat_id: int,
+    body: AddChatParticipantsRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.add_chat_participants(
+        current_user=current_user,
+        chat_id=chat_id,
+        user_ids=body.user_ids,
+        role=body.role,
+    )
+
+
+@router.patch(
+    "/chats/{chat_id}/participants/{user_id}",
+    response_model=ChatParticipantResponse,
+)
+async def update_chat_participant_role(
+    chat_id: int,
+    user_id: int,
+    body: UpdateChatParticipantRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.update_chat_participant_role(
+        current_user=current_user,
+        chat_id=chat_id,
+        user_id=user_id,
+        role=body.role,
+    )
+
+
+@router.delete("/chats/{chat_id}/participants/{user_id}")
+async def remove_chat_participant(
+    chat_id: int,
+    user_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.remove_chat_participant(
+        current_user=current_user,
+        chat_id=chat_id,
+        user_id=user_id,
+    )
+
+
 @router.get("/chats/{chat_id}/messages", response_model=List[ChatMessageResponse])
 async def get_messages(
     chat_id: int,
@@ -78,6 +170,21 @@ async def send_message(
         chat_id=chat_id,
         text=body.text,
         attachment_ids=body.attachment_ids,
+    )
+
+
+@router.post("/messages/{message_id}/forward", response_model=ChatMessageResponse)
+async def forward_message(
+    message_id: int,
+    body: ForwardMessageRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.forward_message(
+        current_user=current_user,
+        message_id=message_id,
+        target_chat_id=body.target_chat_id,
+        recipient_id=body.recipient_id,
     )
 
 

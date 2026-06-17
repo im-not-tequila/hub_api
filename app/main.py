@@ -37,7 +37,9 @@ engine = create_async_engine(DATABASE_URL)
 
 app = FastAPI(
     title="Hub API",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/v1/web/docs/",
+    openapi_url="/v1/web/openapi.json",
 )
 
 admin = Admin(app, engine)

@@ -13,12 +13,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dao.postgres.chat import ChatDAO
+from app.dao.postgres.chat_message_read import ChatMessageReadDAO
 from app.dao.postgres.chat_message_attachment import ChatMessageAttachmentDAO
 from app.dao.postgres.chat_message import ChatMessageDAO
+from app.dao.postgres.chat_participant import ChatParticipantDAO
 from app.dao.mysql import TutorDAO
 from app.core.settings import get_settings
 from app.db.redis_connection import redis_client
 from app.models.postgres import User as UserModel
+from app.models.postgres.chat import Chat, ChatType
+from app.models.postgres.chat_participant import ChatParticipant, ChatParticipantRole
 
 
 class ChatService:
@@ -29,7 +33,9 @@ class ChatService:
     def __init__(self, session_postgres: AsyncSession, session_nitro: AsyncSession):
         self.chat_dao = ChatDAO(session_postgres)
         self.message_dao = ChatMessageDAO(session_postgres)
+        self.message_read_dao = ChatMessageReadDAO(session_postgres)
         self.attachment_dao = ChatMessageAttachmentDAO(session_postgres)
+        self.participant_dao = ChatParticipantDAO(session_postgres)
         self.session_nitro = session_nitro
 
     async def get_chat_users(self, current_user: UserModel) -> list[dict]:
@@ -95,20 +101,16 @@ class ChatService:
         if not chat_rows:
             return []
 
-        participant_ids = [r["participant_id"] for r in chat_rows]
-        participants_map = await self._get_participants_map(participant_ids)
-
         result = []
         for row in chat_rows:
-            participant = participants_map.get(row["participant_id"])
-            last_msg = row["last_message"]
-
-            result.append({
-                "id": row["chat"].id,
-                "participant": participant,
-                "last_message": self._serialize_message(last_msg) if last_msg else None,
-                "unread_count": row["unread_count"],
-            })
+            result.append(
+                await self._serialize_chat_summary(
+                    row["chat"],
+                    current_user.id,
+                    last_message=row["last_message"],
+                    unread_count=row["unread_count"],
+                )
+            )
 
         return result
 
@@ -122,7 +124,7 @@ class ChatService:
         await self._ensure_chat_access(current_user, chat_id)
 
         messages = await self.message_dao.get_messages(chat_id, limit, offset)
-        return [self._serialize_message(m) for m in messages]
+        return [self._serialize_message(m, current_user.id) for m in messages]
 
     async def send_message(
         self,
@@ -165,19 +167,92 @@ class ChatService:
             for attachment in pending_attachments:
                 attachment.message_id = message.id
             message.attachments = pending_attachments
+        else:
+            message.attachments = []
+        message.reads = []
 
-        recipient_id = chat.user2_id if chat.user1_id == current_user.id else chat.user1_id
-        await redis_client.publish(
-            f"chat:messages:{recipient_id}",
-            json.dumps({
+        await self._publish_to_chat_recipients(
+            chat,
+            current_user.id,
+            {
                 "type": "new_message",
                 "chat_id": chat_id,
                 "message_id": message.id,
                 "sender_id": current_user.id,
-            }),
+            },
         )
 
-        return self._serialize_message(message)
+        return self._serialize_message(message, current_user.id)
+
+    async def forward_message(
+        self,
+        *,
+        current_user: UserModel,
+        message_id: int,
+        target_chat_id: int | None = None,
+        recipient_id: int | None = None,
+    ) -> dict:
+        source_message = await self.message_dao.get_by_id_with_attachments(message_id)
+        if not source_message:
+            raise HTTPException(status_code=404, detail="Source message not found")
+
+        await self._ensure_chat_access(current_user, source_message.chat_id)
+        target_chat = await self._resolve_forward_target_chat(
+            current_user=current_user,
+            target_chat_id=target_chat_id,
+            recipient_id=recipient_id,
+        )
+
+        if source_message.text is None and not source_message.attachments:
+            raise HTTPException(status_code=400, detail="Source message is empty")
+
+        original_message_id = source_message.original_message_id or source_message.id
+        original_sender_id = source_message.original_sender_id or source_message.sender_id
+        forwarded_message = await self.message_dao.add(
+            chat_id=target_chat.id,
+            sender_id=current_user.id,
+            text=source_message.text,
+            forwarded_from_message_id=source_message.id,
+            original_message_id=original_message_id,
+            original_sender_id=original_sender_id,
+        )
+
+        copied_attachments = []
+        if source_message.attachments:
+            copied_attachments = await self.attachment_dao.bulk_add(
+                [
+                    {
+                        "chat_id": target_chat.id,
+                        "message_id": forwarded_message.id,
+                        "uploader_id": current_user.id,
+                        "type": attachment.type,
+                        "mime_type": attachment.mime_type,
+                        "original_name": attachment.original_name,
+                        "storage_key": attachment.storage_key,
+                        "size_bytes": attachment.size_bytes,
+                        "width": attachment.width,
+                        "height": attachment.height,
+                    }
+                    for attachment in source_message.attachments
+                ]
+            )
+            forwarded_message.attachments = copied_attachments
+        else:
+            forwarded_message.attachments = []
+        forwarded_message.reads = []
+
+        await self._publish_to_chat_recipients(
+            target_chat,
+            current_user.id,
+            {
+                "type": "new_message",
+                "chat_id": target_chat.id,
+                "message_id": forwarded_message.id,
+                "sender_id": current_user.id,
+            },
+        )
+
+        return self._serialize_message(forwarded_message, current_user.id)
 
     async def upload_attachment(
         self,
@@ -264,29 +339,205 @@ class ChatService:
             raise HTTPException(status_code=400, detail="Cannot create chat with yourself")
 
         chat = await self.chat_dao.get_or_create(current_user.id, participant_id)
-        participant = await self._get_participants_map([participant_id])
+        await self._ensure_direct_participants(chat)
 
-        return {
-            "id": chat.id,
-            "participant": participant.get(participant_id),
-            "last_message": None,
-            "unread_count": 0,
-        }
+        return await self._serialize_chat_summary(
+            chat,
+            current_user.id,
+            last_message=None,
+            unread_count=0,
+        )
+
+    async def create_group_chat(
+        self,
+        current_user: UserModel,
+        *,
+        title: str,
+        participant_ids: list[int],
+        avatar_url: str | None = None,
+    ) -> dict:
+        participant_ids = list(dict.fromkeys([current_user.id, *participant_ids]))
+        if len(participant_ids) < 2:
+            raise HTTPException(status_code=400, detail="Group chat requires at least two participants")
+
+        await self._ensure_users_exist(participant_ids)
+
+        chat = Chat(
+            type=ChatType.GROUP,
+            title=title,
+            avatar_url=avatar_url,
+            creator_user_id=current_user.id,
+        )
+        self.chat_dao.session.add(chat)
+        await self.chat_dao.session.flush()
+
+        for user_id in participant_ids:
+            self.chat_dao.session.add(
+                ChatParticipant(
+                    chat_id=chat.id,
+                    user_id=user_id,
+                    role=(
+                        ChatParticipantRole.ADMIN
+                        if user_id == current_user.id
+                        else ChatParticipantRole.MEMBER
+                    ),
+                    added_by_user_id=current_user.id,
+                )
+            )
+
+        await self.chat_dao.session.commit()
+        await self.chat_dao.session.refresh(chat)
+
+        await self._publish_to_chat_recipients(
+            chat,
+            current_user.id,
+            {
+                "type": "chat_created",
+                "chat_id": chat.id,
+                "chat_type": ChatType.GROUP.value,
+            },
+        )
+
+        return await self._serialize_chat_summary(chat, current_user.id)
+
+    async def update_group_chat(
+        self,
+        current_user: UserModel,
+        chat_id: int,
+        *,
+        title: str | None,
+        avatar_url: str | None,
+    ) -> dict:
+        chat = await self._ensure_group_admin(current_user, chat_id)
+        if title is not None:
+            chat.title = title
+        if avatar_url is not None:
+            chat.avatar_url = avatar_url
+
+        await self.chat_dao.session.commit()
+        await self.chat_dao.session.refresh(chat)
+        await self._publish_to_chat_recipients(
+            chat,
+            current_user.id,
+            {"type": "chat_updated", "chat_id": chat.id},
+        )
+        return await self._serialize_chat_summary(chat, current_user.id)
+
+    async def get_chat_participants(self, current_user: UserModel, chat_id: int) -> list[dict]:
+        await self._ensure_chat_access(current_user, chat_id)
+        participants = await self.participant_dao.get_active_by_chat(chat_id)
+        return await self._serialize_participants(participants)
+
+    async def add_chat_participants(
+        self,
+        current_user: UserModel,
+        chat_id: int,
+        *,
+        user_ids: list[int],
+        role: str,
+    ) -> list[dict]:
+        chat = await self._ensure_group_admin(current_user, chat_id)
+        user_ids = [user_id for user_id in list(dict.fromkeys(user_ids)) if user_id != current_user.id]
+        if not user_ids:
+            raise HTTPException(status_code=400, detail="No users to add")
+
+        await self._ensure_users_exist(user_ids)
+
+        target_role = ChatParticipantRole(role)
+        for user_id in user_ids:
+            await self.participant_dao.upsert_active(
+                chat_id=chat_id,
+                user_id=user_id,
+                role=target_role,
+                added_by_user_id=current_user.id,
+            )
+
+        await self._publish_to_chat_recipients(
+            chat,
+            current_user.id,
+            {
+                "type": "participants_added",
+                "chat_id": chat.id,
+                "user_ids": user_ids,
+            },
+        )
+        return await self.get_chat_participants(current_user, chat_id)
+
+    async def update_chat_participant_role(
+        self,
+        current_user: UserModel,
+        chat_id: int,
+        user_id: int,
+        *,
+        role: str,
+    ) -> dict:
+        await self._ensure_group_admin(current_user, chat_id)
+        participant = await self.participant_dao.get_active_for_user(chat_id, user_id)
+        if not participant:
+            raise HTTPException(status_code=404, detail="Participant not found")
+
+        participant.role = ChatParticipantRole(role)
+        await self.participant_dao.session.commit()
+        await self.participant_dao.session.refresh(participant)
+        return (await self._serialize_participants([participant]))[0]
+
+    async def remove_chat_participant(
+        self,
+        current_user: UserModel,
+        chat_id: int,
+        user_id: int,
+    ) -> dict:
+        chat = await self._ensure_group_admin(current_user, chat_id)
+        if user_id == current_user.id:
+            raise HTTPException(status_code=400, detail="Admin cannot remove themself")
+
+        participant = await self.participant_dao.get_active_for_user(chat_id, user_id)
+        if not participant:
+            raise HTTPException(status_code=404, detail="Participant not found")
+        if participant.role == ChatParticipantRole.ADMIN:
+            active_participants = await self.participant_dao.get_active_by_chat(chat_id)
+            admin_count = sum(1 for item in active_participants if item.role == ChatParticipantRole.ADMIN)
+            if admin_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot remove the last admin")
+
+        removed = await self.participant_dao.deactivate(
+            chat_id=chat_id,
+            user_id=user_id,
+            removed_by_user_id=current_user.id,
+        )
+        if not removed:
+            raise HTTPException(status_code=404, detail="Participant not found")
+
+        await self._publish_to_chat_recipients(
+            chat,
+            current_user.id,
+            {
+                "type": "participant_removed",
+                "chat_id": chat.id,
+                "user_id": user_id,
+            },
+        )
+        await redis_client.publish(
+            f"chat:messages:{user_id}",
+            json.dumps({"type": "removed_from_chat", "chat_id": chat.id}),
+        )
+        return {"removed": True}
 
     async def mark_as_read(self, current_user: UserModel, chat_id: int) -> dict:
         chat = await self._ensure_chat_access(current_user, chat_id)
 
-        count = await self.message_dao.mark_as_read(chat_id, current_user.id)
+        count = await self.message_read_dao.mark_chat_as_read(chat_id, current_user.id)
+        await self.message_dao.mark_as_read(chat_id, current_user.id)
         if count > 0:
-            recipient_id = chat.user2_id if chat.user1_id == current_user.id else chat.user1_id
-            await redis_client.publish(
-                f"chat:messages:{recipient_id}",
-                json.dumps({
+            await self._publish_to_chat_recipients(
+                chat,
+                current_user.id,
+                {
                     "type": "messages_read",
                     "chat_id": chat_id,
                     "reader_id": current_user.id,
                     "marked_count": count,
-                }),
+                },
             )
         return {"marked_count": count}
 
@@ -345,10 +596,128 @@ class ChatService:
             await pubsub.close()
             await self._set_user_offline(user.id)
 
+    async def _serialize_chat_summary(
+        self,
+        chat: Chat,
+        current_user_id: int,
+        *,
+        last_message=None,
+        unread_count: int | None = None,
+    ) -> dict:
+        participants = await self.participant_dao.get_active_by_chat(chat.id)
+        participant_payloads = await self._serialize_participants(participants)
+        participant_by_user_id = {
+            payload["user"]["id"]: payload
+            for payload in participant_payloads
+        }
+        current_participant = participant_by_user_id.get(current_user_id)
+
+        direct_participant = None
+        if chat.type == ChatType.DIRECT:
+            other_user_id = chat.user2_id if chat.user1_id == current_user_id else chat.user1_id
+            if other_user_id is not None:
+                direct_participant = (await self._get_participants_map([other_user_id])).get(other_user_id)
+
+        if unread_count is None:
+            unread_count = await self.message_read_dao.count_unread(chat.id, current_user_id)
+
+        return {
+            "id": chat.id,
+            "type": chat.type.value,
+            "title": chat.title,
+            "avatar_url": chat.avatar_url,
+            "creator_user_id": chat.creator_user_id,
+            "participant": direct_participant,
+            "participants": participant_payloads,
+            "my_role": current_participant["role"] if current_participant else None,
+            "last_message": (
+                self._serialize_message(last_message, current_user_id)
+                if last_message
+                else None
+            ),
+            "unread_count": unread_count,
+        }
+
+    async def _serialize_participants(self, participants: list[ChatParticipant]) -> list[dict]:
+        user_ids = [participant.user_id for participant in participants]
+        users_map = await self._get_participants_map(user_ids)
+
+        return [
+            {
+                "user": users_map.get(participant.user_id),
+                "role": participant.role.value,
+                "is_active": participant.is_active,
+                "added_by_user_id": participant.added_by_user_id,
+                "removed_by_user_id": participant.removed_by_user_id,
+                "removed_at": participant.removed_at.isoformat() if participant.removed_at else None,
+                "created_at": participant.created_at.isoformat() if participant.created_at else None,
+            }
+            for participant in participants
+        ]
+
+    async def _ensure_users_exist(self, user_ids: list[int]) -> None:
+        if not user_ids:
+            return
+
+        result = await self.chat_dao.session.execute(
+            select(UserModel.id).where(UserModel.id.in_(user_ids))
+        )
+        found_ids = set(result.scalars().all())
+        missing_ids = [user_id for user_id in user_ids if user_id not in found_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Users not found: {', '.join(map(str, missing_ids))}",
+            )
+
+    async def _ensure_direct_participants(self, chat: Chat) -> None:
+        if chat.type != ChatType.DIRECT or chat.user1_id is None or chat.user2_id is None:
+            return
+
+        for user_id in (chat.user1_id, chat.user2_id):
+            if not await self.participant_dao.get_for_user(chat.id, user_id):
+                self.chat_dao.session.add(
+                    ChatParticipant(
+                        chat_id=chat.id,
+                        user_id=user_id,
+                        role=ChatParticipantRole.MEMBER,
+                        added_by_user_id=None,
+                    )
+                )
+        await self.chat_dao.session.commit()
+
+    async def _get_chat_recipient_ids(self, chat: Chat, sender_id: int) -> list[int]:
+        participant_ids = await self.participant_dao.get_active_user_ids(chat.id)
+        if not participant_ids and chat.type == ChatType.DIRECT:
+            participant_ids = [
+                user_id
+                for user_id in (chat.user1_id, chat.user2_id)
+                if user_id is not None
+            ]
+        return [user_id for user_id in participant_ids if user_id != sender_id]
+
+    async def _publish_to_chat_recipients(
+        self,
+        chat: Chat,
+        sender_id: int,
+        payload: dict,
+    ) -> None:
+        recipient_ids = await self._get_chat_recipient_ids(chat, sender_id)
+        if not recipient_ids:
+            return
+
+        message = json.dumps(payload)
+        for recipient_id in recipient_ids:
+            await redis_client.publish(f"chat:messages:{recipient_id}", message)
+
     async def _get_participants_map(self, user_ids: list[int]) -> dict:
         """Батчем получает данные участников: postgres id + ФИО/должность из MySQL."""
         from app.dao.postgres import UserDAO
 
+        if not user_ids:
+            return {}
+
+        user_ids = list(dict.fromkeys(user_ids))
         postgres_session = self.chat_dao.session
         default = lambda uid: {
             "id": uid,
@@ -363,6 +732,7 @@ class ChatService:
         user_dao = UserDAO(postgres_session)
         pg_users = await user_dao.get_all_filtered(
             filters={UserModel.id: user_ids},
+            limit=len(user_ids),
         )
 
         platonus_to_pg = {}
@@ -424,18 +794,63 @@ class ChatService:
         chat = await self.chat_dao.get_by_id(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        if current_user.id not in (chat.user1_id, chat.user2_id):
+
+        if current_user.id in (chat.user1_id, chat.user2_id):
+            return chat
+
+        participant = await self.participant_dao.get_active_for_user(chat_id, current_user.id)
+        if not participant:
             raise HTTPException(status_code=403, detail="Access denied")
         return chat
 
+    async def _ensure_group_admin(self, current_user: UserModel, chat_id: int) -> Chat:
+        chat = await self._ensure_chat_access(current_user, chat_id)
+        if chat.type != ChatType.GROUP:
+            raise HTTPException(status_code=400, detail="Operation is available only for group chats")
+
+        participant = await self.participant_dao.get_active_for_user(chat_id, current_user.id)
+        if not participant or participant.role != ChatParticipantRole.ADMIN:
+            raise HTTPException(status_code=403, detail="Only chat admin can perform this action")
+        return chat
+
+    async def _resolve_forward_target_chat(
+        self,
+        *,
+        current_user: UserModel,
+        target_chat_id: int | None,
+        recipient_id: int | None,
+    ):
+        if target_chat_id is not None:
+            return await self._ensure_chat_access(current_user, target_chat_id)
+
+        if recipient_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Either target_chat_id or recipient_id must be provided",
+            )
+        if recipient_id == current_user.id:
+            raise HTTPException(status_code=400, detail="Cannot forward message to yourself")
+        return await self.chat_dao.get_or_create(current_user.id, recipient_id)
+
     @staticmethod
-    def _serialize_message(message) -> dict:
+    def _serialize_message(message, current_user_id: int | None = None) -> dict:
+        is_read = message.is_read
+        if current_user_id is not None:
+            is_read = (
+                message.sender_id == current_user_id
+                or any(read.user_id == current_user_id for read in getattr(message, "reads", []))
+            )
+
         return {
             "id": message.id,
             "chat_id": message.chat_id,
             "sender_id": message.sender_id,
             "text": message.text,
-            "is_read": message.is_read,
+            "is_read": is_read,
+            "is_forwarded": message.forwarded_from_message_id is not None,
+            "forwarded_from_message_id": message.forwarded_from_message_id,
+            "original_message_id": message.original_message_id,
+            "original_sender_id": message.original_sender_id,
             "created_at": message.created_at.isoformat() if message.created_at else None,
             "attachments": [
                 ChatService._serialize_attachment(attachment)

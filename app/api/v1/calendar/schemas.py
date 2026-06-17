@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class CreateCalendarEventRequest(BaseModel):
@@ -18,6 +18,24 @@ class CreateCalendarEventRequest(BaseModel):
     contacts: str | None = None
     needs_tech_support: bool | None = None
 
+    @field_validator("structural_subdivision_id", mode="before")
+    @classmethod
+    def normalize_structural_subdivision_id(cls, value):
+        if value in (0, "0", ""):
+            return None
+        return value
+
+    @field_validator("place_id", "event_type_id")
+    @classmethod
+    def validate_required_positive_id(cls, value: int, info):
+        if value <= 0:
+            messages = {
+                "place_id": "Необходимо выбрать место проведения",
+                "event_type_id": "Необходимо выбрать тип события",
+            }
+            raise ValueError(messages.get(info.field_name, "Некорректное значение поля"))
+        return value
+
     @model_validator(mode="after")
     def fill_missing_languages(self):
         # Title: хотя бы одно поле обязательно, недостающие дублируем из первого заданного
@@ -31,6 +49,8 @@ class CreateCalendarEventRequest(BaseModel):
             raise ValueError(
                 "Необходимо указать название хотя бы на одном языке (title_ru, title_kz или title_en)"
             )
+        if self.end_datetime <= self.start_datetime:
+            raise ValueError("Дата окончания события должна быть позже даты начала")
         first_title = filled_titles[0]
         title_ru = _norm(self.title_ru) or first_title
         title_kz = _norm(self.title_kz) or first_title
@@ -76,6 +96,26 @@ class UpdateCalendarEventRequest(BaseModel):
     contacts: str | None = None
     needs_tech_support: bool | None = None
 
+    @field_validator("structural_subdivision_id", mode="before")
+    @classmethod
+    def normalize_structural_subdivision_id(cls, value):
+        if value in (0, "0", ""):
+            return None
+        return value
+
+    @field_validator("place_id", "event_type_id")
+    @classmethod
+    def validate_optional_positive_id(cls, value: int | None, info):
+        if value is None:
+            return value
+        if value <= 0:
+            messages = {
+                "place_id": "Место проведения указано некорректно",
+                "event_type_id": "Тип события указан некорректно",
+            }
+            raise ValueError(messages.get(info.field_name, "Поле указано некорректно"))
+        return value
+
     @model_validator(mode="after")
     def fill_missing_languages(self):
         def _norm(s: str | None) -> str:
@@ -84,6 +124,15 @@ class UpdateCalendarEventRequest(BaseModel):
         # Если передали хотя бы один title_* — заполняем остальные из первого заданного
         titles = (_norm(self.title_ru), _norm(self.title_kz), _norm(self.title_en))
         filled_titles = [t for t in titles if t]
+        has_any_title_field = (
+            self.title_ru is not None
+            or self.title_kz is not None
+            or self.title_en is not None
+        )
+        if has_any_title_field and not filled_titles:
+            raise ValueError(
+                "Необходимо указать название хотя бы на одном языке (title_ru, title_kz или title_en)"
+            )
         if filled_titles:
             first_title = filled_titles[0]
             title_ru = _norm(self.title_ru) or first_title
@@ -110,6 +159,13 @@ class UpdateCalendarEventRequest(BaseModel):
             description_ru = self.description_ru
             description_kz = self.description_kz
             description_en = self.description_en
+
+        if (
+            self.start_datetime is not None
+            and self.end_datetime is not None
+            and self.end_datetime <= self.start_datetime
+        ):
+            raise ValueError("Дата окончания события должна быть позже даты начала")
 
         return self.model_copy(
             update={
