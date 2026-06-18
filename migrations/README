@@ -1,1 +1,51 @@
-Generic single-database configuration.
+# Alembic migrations
+
+## Запуск миграций
+
+Приложение подключается к PostgreSQL через SSH-туннель, который поднимает uvicorn при старте.
+Для запуска миграций вручную нужно открыть туннель самостоятельно.
+
+### 1. Открыть SSH-туннель (один раз)
+
+```bash
+ssh -f -N -L 5434:localhost:5432 -i ~/.ssh/id_rsa -p 22 svv@95.58.221.187
+```
+
+Туннель уходит в фон (`-f -N`). Локальный порт `5434` → удалённый `localhost:5432`.
+
+### 2. Применить все новые миграции
+
+```bash
+cd hub_api
+source .venv/bin/activate
+
+DATABASE_URL="postgresql+asyncpg://hub:gGkNeHKG1k0zsBiRcqpN@127.0.0.1:5434/hub" \
+alembic upgrade head
+```
+
+### 3. Создать новую миграцию (autogenerate)
+
+```bash
+DATABASE_URL="postgresql+asyncpg://hub:gGkNeHKG1k0zsBiRcqpN@127.0.0.1:5434/hub" \
+alembic revision --autogenerate -m "описание изменений"
+```
+
+Созданный файл появится в `migrations/versions/` — проверь его перед применением.
+
+### Полезные команды
+
+```bash
+# Текущая версия БД
+DATABASE_URL="..." alembic current
+
+# История миграций
+DATABASE_URL="..." alembic history
+
+# Откатить последнюю миграцию
+DATABASE_URL="..." alembic downgrade -1
+```
+
+### Если туннель уже открыт uvicorn'ом
+
+Если uvicorn запущен, он уже держит туннель на случайном порту.
+В этом случае проще открыть отдельный туннель на фиксированный порт (5434) — они не конфликтуют.

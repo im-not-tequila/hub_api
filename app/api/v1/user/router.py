@@ -4,7 +4,10 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from typing import List
 
+from sqlalchemy import select, distinct
 from app.models.postgres import User as UserModel
+from app.models.postgres.user_role import UserRole
+from app.models.postgres.role_sidebar_section import RoleSidebarSection
 from app.dao.migrate_user import MigrateUserMysqlToPostgres
 
 from app.models.mysql.nitro import (
@@ -24,6 +27,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 router = APIRouter()
+
+
+@router.get("/me/sidebar-sections", response_model=List[str])
+async def get_sidebar_sections(
+        current_user: UserModel = Depends(get_current_user),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
+):
+    """
+    Возвращает список ключей разделов сайдбара, доступных текущему пользователю
+    на основании его ролей.
+    """
+    role_ids = [ur.role_id for ur in current_user.user_roles]
+    if not role_ids:
+        return []
+
+    result = await session_postgres.execute(
+        select(distinct(RoleSidebarSection.section_key))
+        .where(RoleSidebarSection.role_id.in_(role_ids))
+    )
+    return result.scalars().all()
 
 
 @router.get("/me", response_model=UserResponse)

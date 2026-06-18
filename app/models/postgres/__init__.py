@@ -20,6 +20,7 @@ from .chat import Chat, ChatType
 from .chat_message import ChatMessage
 from .chat_message_attachment import ChatMessageAttachment
 from .chat_message_read import ChatMessageRead
+from .chat_message_user_deletion import ChatMessageUserDeletion
 from .chat_participant import ChatParticipant, ChatParticipantRole
 from .legacy_chat_message_mapping import LegacyChatMessageMapping
 from .calendar_event_manager import (
@@ -28,6 +29,11 @@ from .calendar_event_manager import (
     CalendarEventType,
 )
 from .employee_custom_schedule import EmployeeCustomSchedule
+from .sidebar_section import SidebarSection
+from .role_sidebar_section import RoleSidebarSection
+from .broadcast_group import BroadcastGroup
+from .broadcast_group_member import BroadcastGroupMember
+from .broadcast_group_role import BroadcastGroupRole
 
 
 __all__ = [
@@ -57,6 +63,7 @@ __all__ = [
     'ChatMessage',
     'ChatMessageAttachment',
     'ChatMessageRead',
+    'ChatMessageUserDeletion',
     'ChatParticipant',
     'ChatParticipantRole',
     'LegacyChatMessageMapping',
@@ -65,4 +72,9 @@ __all__ = [
     'CalendarEventPlace',
     'CalendarEventType',
     'EmployeeCustomSchedule',
+    'SidebarSection',
+    'RoleSidebarSection',
+    'BroadcastGroup',
+    'BroadcastGroupMember',
+    'BroadcastGroupRole',
 ]

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Response, Depends
 
 from app.services.auth_service import AuthService
-
+from app.core.settings import get_settings
 
 from app.schemas import (NcalayerVerifyRequest, GetChallengeResponse, NcalayerVerifyResponse, PlatonusLoginRequest,
                       PlatonusLoginResponse, RefreshTokenResponse)
@@ -9,8 +9,35 @@ from app.schemas import (NcalayerVerifyRequest, GetChallengeResponse, NcalayerVe
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_nitro_session, get_postgres_session, get_perco_session
 
-
 router = APIRouter()
+settings = get_settings()
+
+
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    domain = settings.COOKIE_DOMAIN
+    # secure=True только на проде (когда домен задан и есть HTTPS)
+    # на localhost/127.0.0.1 secure=True блокируется браузером на HTTP
+    secure = bool(domain)
+    samesite = "lax"
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        domain=domain,
+        max_age=7 * 24 * 60 * 60,
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        domain=domain,
+        max_age=60 * 60,
+    )
 
 
 @router.get(
@@ -40,23 +67,7 @@ async def ncalayer_verify(
         session_perco=session_perco
     ).ncalayer_verify(data)
 
-    response.set_cookie(
-        key="refresh_token",
-        value=tokens.refresh_token,
-        httponly=True,  # ❗ JS не сможет прочитать
-        secure=True,  # ❗ только по HTTPS (на dev можно False)
-        samesite="none",  # ❗ для кросс-доменных запросов
-        max_age=7 * 24 * 60 * 60,  # 7 дней
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=tokens.access_token,
-        httponly=True,  # защищаем от XSS
-        secure=True,  # только HTTPS
-        samesite="none",
-        max_age=60 * 60  # 1 час или сколько у тебя живет access токен
-    )
+    _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
     return NcalayerVerifyResponse(
         access_token=tokens.access_token,
@@ -81,23 +92,7 @@ async def platonus_login(
         session_perco=session_perco
     ).platonus_login(data)
 
-    response.set_cookie(
-        key="refresh_token",
-        value=tokens.refresh_token,
-        httponly=True,  # ❗ JS не сможет прочитать
-        secure=True,  # ❗ только по HTTPS (на dev можно False)
-        samesite="none",  # ❗ для кросс-доменных запросов
-        max_age=7 * 24 * 60 * 60,  # 7 дней
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=tokens.access_token,
-        httponly=True,  # защищаем от XSS
-        secure=True,  # только HTTPS
-        samesite="none",
-        max_age=60 * 60  # 1 час или сколько у тебя живет access токен
-    )
+    _set_auth_cookies(response, tokens.access_token, tokens.refresh_token)
 
     return PlatonusLoginResponse(
         access_token=tokens.access_token,
@@ -116,10 +111,6 @@ async def refresh_token(
         session_nitro: AsyncSession = Depends(get_nitro_session),
         session_perco: AsyncSession = Depends(get_perco_session)
 ):
-    """
-    Обновление access токена по refresh токену.
-    """
-
     refresh_token_cookie = request.cookies.get("refresh_token")
     new_access_token = await AuthService(
         session_postgres=session_postgres,
@@ -127,13 +118,15 @@ async def refresh_token(
         session_perco=session_perco
     ).refresh_access_token(refresh_token_cookie)
 
+    domain = settings.COOKIE_DOMAIN
     response.set_cookie(
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=60 * 60,  # 1 час
+        secure=bool(domain),
+        samesite="lax",
+        domain=domain,
+        max_age=60 * 60,
     )
 
     return RefreshTokenResponse(
@@ -146,7 +139,8 @@ async def refresh_token(
     path="/logout"
 )
 def logout(response: Response):
-    response.delete_cookie(key="refresh_token")
-    response.delete_cookie(key="access_token")
+    domain = settings.COOKIE_DOMAIN
+    response.delete_cookie(key="refresh_token", domain=domain)
+    response.delete_cookie(key="access_token", domain=domain)
 
     return {"message": "Logged out"}

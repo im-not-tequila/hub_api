@@ -54,6 +54,7 @@ class ChatParticipant(PostgresBase, TimestampMixin):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    chat_hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="participants")
 

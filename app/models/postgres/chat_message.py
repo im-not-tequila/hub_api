@@ -14,6 +14,7 @@ class ChatMessage(PostgresBase):
         Index('ix_chat_messages_forwarded_from_message_id', 'forwarded_from_message_id'),
         Index('ix_chat_messages_original_message_id', 'original_message_id'),
         Index('ix_chat_messages_created_at', 'created_at'),
+        Index('ix_chat_messages_is_deleted', 'is_deleted'),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -33,6 +34,14 @@ class ChatMessage(PostgresBase):
         Integer, ForeignKey('chat_messages.id', ondelete='SET NULL'), nullable=True
     )
     original_sender_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True
+    )
+
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default='false', nullable=False
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True
     )
 

@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: str
     REDIS_DATABASE: int
 
+    DEBUG: bool = False
+    COOKIE_DOMAIN: Optional[str] = None  # None = localhost, ".shakarim.kz" = prod
+    SSO_SECRET: Optional[str] = None     # Общий секрет для SSO с PHP-проектом
+
     # 👉 Добавляем опциональные SSH-настройки
     SSH_HOST: Optional[str] = None
     SSH_PORT: Optional[int] = None

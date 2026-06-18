@@ -1,3 +1,4 @@
+import os
 import sys
 from os.path import dirname, abspath
 
@@ -12,6 +13,9 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.db.postgres_connection import PostgresBase, DATABASE_URL
+
+# Разрешаем переопределить URL через переменную окружения (удобно для миграций через SSH-туннель)
+DATABASE_URL = os.environ.get("DATABASE_URL") or DATABASE_URL
 from app.models.postgres.user import User
 from app.models.postgres.user_info import UserInfo
 from app.models.postgres.role import Role
@@ -32,6 +36,7 @@ from app.models.postgres.chat import Chat
 from app.models.postgres.chat_message import ChatMessage
 from app.models.postgres.chat_message_attachment import ChatMessageAttachment
 from app.models.postgres.chat_message_read import ChatMessageRead
+from app.models.postgres.chat_message_user_deletion import ChatMessageUserDeletion
 from app.models.postgres.chat_participant import ChatParticipant
 from app.models.postgres.calendar_event_manager import CalendarEventManager, CalendarEventPlace, CalendarEventType
 from app.models.postgres.employee_custom_schedule import EmployeeCustomSchedule

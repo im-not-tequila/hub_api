@@ -22,6 +22,10 @@ from .schemas import (
     UpdateGroupChatRequest,
     AddChatParticipantsRequest,
     UpdateChatParticipantRequest,
+    DeleteMessageRequest,
+    DeleteMessageResponse,
+    DeleteChatResponse,
+    LeaveChatResponse,
     MarkAsReadResponse,
     UploadChatAttachmentResponse,
 )
@@ -133,6 +137,15 @@ async def update_chat_participant_role(
     )
 
 
+@router.delete("/chats/{chat_id}/participants/me", response_model=LeaveChatResponse)
+async def leave_chat(
+    chat_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.leave_chat(current_user=current_user, chat_id=chat_id)
+
+
 @router.delete("/chats/{chat_id}/participants/{user_id}")
 async def remove_chat_participant(
     chat_id: int,
@@ -186,6 +199,29 @@ async def forward_message(
         target_chat_id=body.target_chat_id,
         recipient_id=body.recipient_id,
     )
+
+
+@router.delete("/messages/{message_id}", response_model=DeleteMessageResponse)
+async def delete_message(
+    message_id: int,
+    body: DeleteMessageRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.delete_message(
+        current_user=current_user,
+        message_id=message_id,
+        scope=body.scope,
+    )
+
+
+@router.delete("/chats/{chat_id}", response_model=DeleteChatResponse)
+async def delete_chat(
+    chat_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    return await service.delete_chat(current_user=current_user, chat_id=chat_id)
 
 
 @router.post(

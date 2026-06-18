@@ -39,6 +39,8 @@ class ChatMessageResponse(BaseModel):
     sender_id: int
     text: Optional[str] = None
     is_read: bool
+    is_deleted: bool = False
+    deleted_by_user_id: Optional[int] = None
     is_forwarded: bool = False
     forwarded_from_message_id: Optional[int] = None
     original_message_id: Optional[int] = None
@@ -148,6 +150,23 @@ class AddChatParticipantsRequest(BaseModel):
 
 class UpdateChatParticipantRequest(BaseModel):
     role: Literal["admin", "member"]
+
+
+class DeleteMessageRequest(BaseModel):
+    scope: Literal["me", "everyone"]
+
+
+class DeleteMessageResponse(BaseModel):
+    deleted: bool
+    scope: Literal["me", "everyone"]
+
+
+class DeleteChatResponse(BaseModel):
+    deleted: bool
+
+
+class LeaveChatResponse(BaseModel):
+    left: bool
 
 
 class MarkAsReadResponse(BaseModel):

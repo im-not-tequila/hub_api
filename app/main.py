@@ -45,12 +45,14 @@ app = FastAPI(
 admin = Admin(app, engine)
 
 origins = [
-    "https://new.hub.shakarim.kz",  # фронтенд Vue
+    "https://new.hub.shakarim.kz",
     "http://new.hub.shakarim.kz",
-    "https://api.hub.shakarim.kz",  # если API дергает сам себя
+    "https://hub.shakarim.kz",      # PHP-проект (iframe с чатом)
+    "http://hub.shakarim.kz",
+    "https://api.hub.shakarim.kz",
     "http://api.hub.shakarim.kz",
-    "http://localhost:5173",        # для локальной разработки
-    "http://127.0.0.1:5173"
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(

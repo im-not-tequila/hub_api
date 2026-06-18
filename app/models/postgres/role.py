@@ -5,6 +5,7 @@ from app.db.postgres_connection import PostgresBase
 # from app.models.postgres.user_role import UserRole
 from .timestamp_mixin import TimestampMixin
 from app.models.postgres.role_document_type_group import RoleDocumentTypeGroup
+from app.models.postgres.role_sidebar_section import RoleSidebarSection
 
 
 class Role(PostgresBase, TimestampMixin):
@@ -42,6 +43,13 @@ class Role(PostgresBase, TimestampMixin):
         "RoleDocumentTypeGroup",
         back_populates="role",
         cascade="all, delete-orphan"
+    )
+
+    sidebar_sections: Mapped[list["RoleSidebarSection"]] = relationship(
+        "RoleSidebarSection",
+        back_populates="role",
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
 
     def __str__(self):

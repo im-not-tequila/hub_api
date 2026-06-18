@@ -76,6 +76,33 @@ class ChatParticipantDAO(PostgresDao):
         await self.session.refresh(participant)
         return participant
 
+    async def set_chat_hidden(self, *, chat_id: int, user_id: int) -> bool:
+        """Помечает чат скрытым для пользователя. Возвращает True если запись была найдена."""
+        stmt = (
+            sa_update(ChatParticipant)
+            .where(
+                ChatParticipant.chat_id == chat_id,
+                ChatParticipant.user_id == user_id,
+            )
+            .values(chat_hidden_at=datetime.now(timezone.utc))
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return bool(result.rowcount)
+
+    async def unhide_chat(self, *, chat_id: int, user_id: int) -> None:
+        """Снимает скрытие чата при отправке нового сообщения."""
+        stmt = (
+            sa_update(ChatParticipant)
+            .where(
+                ChatParticipant.chat_id == chat_id,
+                ChatParticipant.user_id == user_id,
+                ChatParticipant.chat_hidden_at.isnot(None),
+            )
+            .values(chat_hidden_at=None)
+        )
+        await self.session.execute(stmt)
+
     async def deactivate(self, *, chat_id: int, user_id: int, removed_by_user_id: int) -> bool:
         stmt = (
             sa_update(ChatParticipant)

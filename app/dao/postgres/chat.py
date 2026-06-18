@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, or_, desc
+from sqlalchemy import and_, select, func, or_, desc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,14 +64,23 @@ class ChatDAO(PostgresDao):
             .subquery()
         )
 
-        active_participant_exists = (
+        visible_participant_exists = (
             select(ChatParticipant.id)
             .where(
                 ChatParticipant.chat_id == Chat.id,
                 ChatParticipant.user_id == user_id,
                 ChatParticipant.is_active == True,
+                ChatParticipant.chat_hidden_at.is_(None),
             )
             .exists()
+        )
+
+        hidden_direct_subq = (
+            select(ChatParticipant.chat_id)
+            .where(
+                ChatParticipant.user_id == user_id,
+                ChatParticipant.chat_hidden_at.isnot(None),
+            )
         )
 
         stmt = (
@@ -83,9 +92,11 @@ class ChatDAO(PostgresDao):
             .options(selectinload(ChatMessage.attachments))
             .where(
                 or_(
-                    Chat.user1_id == user_id,
-                    Chat.user2_id == user_id,
-                    active_participant_exists,
+                    and_(
+                        or_(Chat.user1_id == user_id, Chat.user2_id == user_id),
+                        Chat.id.not_in(hidden_direct_subq),
+                    ),
+                    visible_participant_exists,
                 )
             )
             .outerjoin(last_msg_subq, last_msg_subq.c.chat_id == Chat.id)

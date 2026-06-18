@@ -12,8 +12,10 @@ from .chat import ChatDAO
 from .chat_message import ChatMessageDAO
 from .chat_message_attachment import ChatMessageAttachmentDAO
 from .chat_message_read import ChatMessageReadDAO
+from .chat_message_user_deletion import ChatMessageUserDeletionDAO
 from .chat_participant import ChatParticipantDAO
 from .monitoring import MonitoringPostgresDAO
+from .broadcast_group import BroadcastGroupDAO
 
 
 __all__ = [
@@ -31,6 +33,8 @@ __all__ = [
     'ChatMessageDAO',
     'ChatMessageAttachmentDAO',
     'ChatMessageReadDAO',
+    'ChatMessageUserDeletionDAO',
     'ChatParticipantDAO',
     'MonitoringPostgresDAO',
+    'BroadcastGroupDAO',
 ]

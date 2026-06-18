@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.auth.router import router as auth_router
+from app.api.v1.auth.sso_router import router as sso_router
 from app.api.v1.user.router import router as user_router
 from app.api.v1.doc.router import router as docs_router
 from app.api.v1.notification.router import router as notification_router
@@ -11,10 +12,12 @@ from app.api.v1.calendar.router import router as calendar_router
 from app.api.v1.monitoring.router import router as monitoring_router
 from app.api.v1.perco.router import router as perco_router
 from app.api.v1.structure.router import router as structure_router
+from app.api.v1.broadcast.router import router as broadcast_router
 
 api_router = APIRouter()
 
 api_router.include_router(auth_router, prefix="/v1/auth", tags=["Auth"])
+api_router.include_router(sso_router, prefix="/v1/auth", tags=["Auth"])
 
 api_router.include_router(user_router, prefix="/v1/user", tags=["User"])
 
@@ -31,3 +34,4 @@ api_router.include_router(calendar_router, prefix="/v1/calendar", tags=["Calenda
 api_router.include_router(monitoring_router, prefix="/v1/monitoring", tags=["Monitoring"])
 api_router.include_router(perco_router, prefix="/v1/perco", tags=["Perco"])
 api_router.include_router(structure_router, prefix="/v1/structure", tags=["Structure"])
+api_router.include_router(broadcast_router, prefix="/v1/broadcast", tags=["Broadcast"])

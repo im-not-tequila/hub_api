@@ -16,6 +16,7 @@ from app.dao.postgres.chat import ChatDAO
 from app.dao.postgres.chat_message_read import ChatMessageReadDAO
 from app.dao.postgres.chat_message_attachment import ChatMessageAttachmentDAO
 from app.dao.postgres.chat_message import ChatMessageDAO
+from app.dao.postgres.chat_message_user_deletion import ChatMessageUserDeletionDAO
 from app.dao.postgres.chat_participant import ChatParticipantDAO
 from app.dao.mysql import TutorDAO
 from app.core.settings import get_settings
@@ -34,6 +35,7 @@ class ChatService:
         self.chat_dao = ChatDAO(session_postgres)
         self.message_dao = ChatMessageDAO(session_postgres)
         self.message_read_dao = ChatMessageReadDAO(session_postgres)
+        self.message_user_deletion_dao = ChatMessageUserDeletionDAO(session_postgres)
         self.attachment_dao = ChatMessageAttachmentDAO(session_postgres)
         self.participant_dao = ChatParticipantDAO(session_postgres)
         self.session_nitro = session_nitro
@@ -124,6 +126,14 @@ class ChatService:
         await self._ensure_chat_access(current_user, chat_id)
 
         messages = await self.message_dao.get_messages(chat_id, limit, offset)
+
+        if messages:
+            hidden_ids = await self.message_user_deletion_dao.get_deleted_message_ids(
+                user_id=current_user.id,
+                message_ids=[m.id for m in messages],
+            )
+            messages = [m for m in messages if m.id not in hidden_ids]
+
         return [self._serialize_message(m, current_user.id) for m in messages]
 
     async def send_message(
@@ -155,6 +165,8 @@ class ChatService:
                     status_code=400,
                     detail="Some attachments are invalid or already attached",
                 )
+
+        await self.participant_dao.unhide_chat(chat_id=chat_id, user_id=current_user.id)
 
         message = await self.message_dao.add(
             chat_id=chat_id,
@@ -523,6 +535,121 @@ class ChatService:
         )
         return {"removed": True}
 
+    async def leave_chat(
+        self,
+        current_user: UserModel,
+        chat_id: int,
+    ) -> dict:
+        chat = await self.chat_dao.get_by_id(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        if chat.type != ChatType.GROUP:
+            raise HTTPException(status_code=400, detail="Operation is available only for group chats")
+
+        participant = await self.participant_dao.get_active_for_user(chat_id, current_user.id)
+        if not participant:
+            raise HTTPException(status_code=403, detail="You are not a member of this chat")
+
+        if participant.role == ChatParticipantRole.ADMIN:
+            active_participants = await self.participant_dao.get_active_by_chat(chat_id)
+            admin_count = sum(1 for p in active_participants if p.role == ChatParticipantRole.ADMIN)
+            if admin_count <= 1 and len(active_participants) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="You are the last admin. Assign another admin before leaving.",
+                )
+
+        # Collect remaining recipient IDs before deactivating current user
+        active_ids = await self.participant_dao.get_active_user_ids(chat_id)
+        recipient_ids = [uid for uid in active_ids if uid != current_user.id]
+
+        await self.participant_dao.deactivate(
+            chat_id=chat_id,
+            user_id=current_user.id,
+            removed_by_user_id=current_user.id,
+        )
+
+        message = json.dumps({"type": "participant_left", "chat_id": chat.id, "user_id": current_user.id})
+        for recipient_id in recipient_ids:
+            await redis_client.publish(f"chat:messages:{recipient_id}", message)
+
+        await redis_client.publish(
+            f"chat:messages:{current_user.id}",
+            json.dumps({"type": "left_chat", "chat_id": chat.id}),
+        )
+        return {"left": True}
+
+    async def delete_message(
+        self,
+        current_user: UserModel,
+        message_id: int,
+        scope: str,
+    ) -> dict:
+        message = await self.message_dao.get_by_id_with_attachments(message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        if message.is_deleted:
+            raise HTTPException(status_code=409, detail="Message is already deleted for everyone")
+
+        chat = await self._ensure_chat_access(current_user, message.chat_id)
+
+        if scope == "everyone":
+            if message.sender_id != current_user.id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only delete your own messages for everyone",
+                )
+            deleted = await self.message_dao.soft_delete_for_all(message_id, current_user.id)
+            if not deleted:
+                raise HTTPException(status_code=409, detail="Message is already deleted for everyone")
+
+            await self._publish_to_chat_recipients(
+                chat,
+                current_user.id,
+                {
+                    "type": "message_deleted",
+                    "chat_id": message.chat_id,
+                    "message_id": message_id,
+                    "scope": "everyone",
+                    "deleted_by": current_user.id,
+                },
+            )
+            await redis_client.publish(
+                f"chat:messages:{current_user.id}",
+                json.dumps({
+                    "type": "message_deleted",
+                    "chat_id": message.chat_id,
+                    "message_id": message_id,
+                    "scope": "everyone",
+                    "deleted_by": current_user.id,
+                }),
+            )
+        else:
+            await self.message_user_deletion_dao.add_if_absent(message_id, current_user.id)
+
+        return {"deleted": True, "scope": scope}
+
+    async def delete_chat(self, current_user: UserModel, chat_id: int) -> dict:
+        chat = await self._ensure_chat_access(current_user, chat_id)
+
+        participant = await self.participant_dao.get_for_user(chat_id, current_user.id)
+        if participant:
+            await self.participant_dao.set_chat_hidden(chat_id=chat_id, user_id=current_user.id)
+        else:
+            # Для direct-чатов участник может отсутствовать в таблице participants
+            self.participant_dao.session.add(
+                ChatParticipant(
+                    chat_id=chat_id,
+                    user_id=current_user.id,
+                    role=ChatParticipantRole.MEMBER,
+                    chat_hidden_at=datetime.now(timezone.utc),
+                )
+            )
+            await self.participant_dao.session.commit()
+
+        return {"deleted": True}
+
     async def mark_as_read(self, current_user: UserModel, chat_id: int) -> dict:
         chat = await self._ensure_chat_access(current_user, chat_id)
 
@@ -836,23 +963,32 @@ class ChatService:
     def _serialize_message(message, current_user_id: int | None = None) -> dict:
         is_read = message.is_read
         if current_user_id is not None:
-            is_read = (
-                message.sender_id == current_user_id
-                or any(read.user_id == current_user_id for read in getattr(message, "reads", []))
-            )
+            if message.sender_id == current_user_id:
+                # Отправитель: прочитано = получатель прочёл сообщение (DB-флаг)
+                is_read = message.is_read
+            else:
+                # Получатель: прочитано = я сам прочёл
+                is_read = any(
+                    read.user_id == current_user_id
+                    for read in getattr(message, "reads", [])
+                )
+
+        is_deleted = getattr(message, "is_deleted", False)
 
         return {
             "id": message.id,
             "chat_id": message.chat_id,
             "sender_id": message.sender_id,
-            "text": message.text,
+            "text": None if is_deleted else message.text,
             "is_read": is_read,
+            "is_deleted": is_deleted,
+            "deleted_by_user_id": message.deleted_by_user_id if is_deleted else None,
             "is_forwarded": message.forwarded_from_message_id is not None,
             "forwarded_from_message_id": message.forwarded_from_message_id,
             "original_message_id": message.original_message_id,
             "original_sender_id": message.original_sender_id,
             "created_at": message.created_at.isoformat() if message.created_at else None,
-            "attachments": [
+            "attachments": [] if is_deleted else [
                 ChatService._serialize_attachment(attachment)
                 for attachment in message.attachments
             ],
