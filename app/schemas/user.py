@@ -9,7 +9,7 @@ class UserResponse(BaseModel):
     firstname: str
     lastname: str
     structural_subdivision: str
-    subdivision_id: int
+    subdivision_id: Optional[int] = None
     patronymic: Optional[str] = None
     shortname: str = Field(default="")
     post: str = Field(default="")
