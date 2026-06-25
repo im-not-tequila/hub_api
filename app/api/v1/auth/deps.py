@@ -1,4 +1,5 @@
-from fastapi import Request, HTTPException, WebSocket, status, Depends
+from fastapi import HTTPException, WebSocket, status, Depends
+from fastapi.security import APIKeyCookie
 from jose import jwt, JWTError
 
 from app.core.settings import get_settings
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
 settings = get_settings()
+
+access_token_cookie = APIKeyCookie(name="access_token", auto_error=False)
 
 
 def _extract_user_id_from_cookies(request: HTTPConnection) -> int:
@@ -39,7 +42,8 @@ def _extract_user_id_from_cookies(request: HTTPConnection) -> int:
 
 async def get_current_user(
         request: HTTPConnection,
-        session_postgres: AsyncSession = Depends(get_postgres_session)
+        _swagger_cookie: str | None = Depends(access_token_cookie),
+        session_postgres: AsyncSession = Depends(get_postgres_session),
 ) -> User:
     """
     Достает текущего пользователя из access-токена в cookie.

@@ -119,6 +119,20 @@ async def create_group_chat(
     )
 
 
+@router.get(
+    "/chats/{chat_id}",
+    response_model=ChatResponse,
+    summary="Получить чат по ID",
+)
+async def get_chat(
+    chat_id: int = Path(..., description="ID чата"),
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    """Возвращает чат с участниками и метаданными для текущего пользователя."""
+    return await service.get_chat(current_user, chat_id)
+
+
 @router.patch(
     "/chats/{chat_id}",
     response_model=ChatResponse,
@@ -337,6 +351,20 @@ async def get_outgoing_messages(
 ):
     """Возвращает исходящие сообщения текущего пользователя из всех чатов."""
     return await service.get_outgoing_messages(current_user, limit, offset)
+
+
+@router.get(
+    "/messages/{message_id}",
+    response_model=ChatMessageResponse,
+    summary="Получить сообщение по ID",
+)
+async def get_message(
+    message_id: int = Path(..., description="ID сообщения"),
+    current_user: UserModel = Depends(get_current_user),
+    service: ChatService = Depends(_get_chat_service),
+):
+    """Возвращает одно сообщение с вложениями, если у пользователя есть доступ к чату."""
+    return await service.get_message(current_user, message_id)
 
 
 @router.post(

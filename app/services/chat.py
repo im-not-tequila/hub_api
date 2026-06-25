@@ -116,6 +116,26 @@ class ChatService:
 
         return result
 
+    async def get_chat(self, current_user: UserModel, chat_id: int) -> dict:
+        chat = await self._ensure_chat_access(current_user, chat_id)
+        return await self._serialize_chat_summary(chat, current_user.id)
+
+    async def get_message(self, current_user: UserModel, message_id: int) -> dict:
+        message = await self.message_dao.get_by_id_with_attachments(message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        await self._ensure_chat_access(current_user, message.chat_id)
+
+        hidden_ids = await self.message_user_deletion_dao.get_deleted_message_ids(
+            user_id=current_user.id,
+            message_ids=[message.id],
+        )
+        if message.id in hidden_ids:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        return self._serialize_message(message, current_user.id)
+
     async def get_messages(
         self,
         current_user: UserModel,
