@@ -136,6 +136,32 @@ class ChatService:
 
         return [self._serialize_message(m, current_user.id) for m in messages]
 
+    async def get_incoming_messages(
+        self,
+        current_user: UserModel,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        messages = await self.message_dao.get_incoming_messages(
+            current_user.id,
+            limit,
+            offset,
+        )
+        return [self._serialize_message(m, current_user.id) for m in messages]
+
+    async def get_outgoing_messages(
+        self,
+        current_user: UserModel,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        messages = await self.message_dao.get_outgoing_messages(
+            current_user.id,
+            limit,
+            offset,
+        )
+        return [self._serialize_message(m, current_user.id) for m in messages]
+
     async def send_message(
         self,
         current_user: UserModel,
