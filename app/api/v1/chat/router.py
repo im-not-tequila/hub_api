@@ -449,10 +449,7 @@ async def get_attachment(
 #  WebSocket
 # ------------------------------------------------------------------ #
 
-@router.websocket(
-    "/ws",
-    summary="WebSocket для событий чата",
-)
+@router.websocket("/ws")
 async def chat_websocket(
     websocket: WebSocket,
     refresh_token: Optional[str] = Cookie(None, description="Refresh-токен из cookie для авторизации"),
