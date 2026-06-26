@@ -49,6 +49,40 @@ async def list_active_employees_punctuality_stats(
     )
 
 
+@router.get(path="/list/active/punctuality/stats/excel")
+async def export_active_employees_punctuality_period_excel(
+    start_date: datetime.date = Query(..., description="Start date (YYYY-MM-DD)"),
+    end_date: datetime.date = Query(..., description="End date (YYYY-MM-DD)"),
+    structural_subdivision_id: int | None = Query(None, description="Filter by structural subdivision ID"),
+    search: str | None = Query(None, description="Search by full name, subdivision or position"),
+    session_perco: AsyncSession = Depends(get_perco_session),
+    session_nitro: AsyncSession = Depends(get_nitro_session),
+    session_postgres: AsyncSession = Depends(get_postgres_session),
+) -> Response:
+    content = await MonitoringService(
+        session_perco=session_perco,
+        session_nitro=session_nitro,
+        session_postgres=session_postgres,
+    ).export_staff_punctuality_period_late_excel(
+        start_date=start_date,
+        end_date=end_date,
+        structural_subdivision_id=structural_subdivision_id,
+        search=search,
+    )
+    start_label = start_date.strftime("%d.%m.%Y")
+    end_label = end_date.strftime("%d.%m.%Y")
+    headers = {
+        "Content-Disposition": (
+            f'attachment; filename="opozdavshie_{start_label}_{end_label}.xls"'
+        ),
+    }
+    return Response(
+        content=content,
+        media_type="application/vnd.ms-excel",
+        headers=headers,
+    )
+
+
 @router.get(path="/list/active/excel")
 async def export_employees_staff_excel(
     structural_subdivision_id: int | None = Query(None, description="Filter by structural subdivision ID"),

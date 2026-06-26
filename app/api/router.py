@@ -13,6 +13,7 @@ from app.api.v1.monitoring.router import router as monitoring_router
 from app.api.v1.perco.router import router as perco_router
 from app.api.v1.structure.router import router as structure_router
 from app.api.v1.broadcast.router import router as broadcast_router
+from app.api.v1.os_inventory.router import router as os_inventory_router
 
 api_router = APIRouter()
 
@@ -35,3 +36,4 @@ api_router.include_router(monitoring_router, prefix="/v1/monitoring", tags=["Mon
 api_router.include_router(perco_router, prefix="/v1/perco", tags=["Perco"])
 api_router.include_router(structure_router, prefix="/v1/structure", tags=["Structure"])
 api_router.include_router(broadcast_router, prefix="/v1/broadcast", tags=["Broadcast"])
+api_router.include_router(os_inventory_router, prefix="/v1/os-inventory", tags=["OsInventory"])

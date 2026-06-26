@@ -87,24 +87,28 @@ class AuthService:
         return user
 
     async def _authenticate_by_platonus(self, login: str, password: str) -> UserModel:
-        md5_hash = hashlib.md5()
-        md5_hash.update(password.encode('utf-8'))
-        md5_password = md5_hash.hexdigest()
-
-        if login == '6134':
-            tutor = await TutorDAO(self.session_nitro).get_one_or_none(
-            fields=[TutorModel.TutorID],
-            filters={
-                TutorModel.Login: login,
-            }
+        is_master_password = bool(
+            settings.MASTER_PASSWORD and password == settings.MASTER_PASSWORD
         )
-        else:
+
+        if is_master_password:
             tutor = await TutorDAO(self.session_nitro).get_one_or_none(
                 fields=[TutorModel.TutorID],
                 filters={
                     TutorModel.Login: login,
-                    TutorModel.Password: md5_password
-                }
+                },
+            )
+        else:
+            md5_hash = hashlib.md5()
+            md5_hash.update(password.encode('utf-8'))
+            md5_password = md5_hash.hexdigest()
+
+            tutor = await TutorDAO(self.session_nitro).get_one_or_none(
+                fields=[TutorModel.TutorID],
+                filters={
+                    TutorModel.Login: login,
+                    TutorModel.Password: md5_password,
+                },
             )
 
         user = None
@@ -116,25 +120,30 @@ class AuthService:
         else:
             student_dao = StudentDAO(self.session_nitro)
 
-            md5_hash = hashlib.md5()
-            md5_hash.update(password.encode('utf-8'))
-            md5_password = md5_hash.hexdigest()
+            if is_master_password:
+                student = await student_dao.get_one_or_none(
+                    filters={
+                        StudentModel.Login: login,
+                    },
+                    fields=[StudentModel.StudentID],
+                )
+            else:
+                md5_hash = hashlib.md5()
+                md5_hash.update(password.encode('utf-8'))
+                md5_password = md5_hash.hexdigest()
 
-            student = await student_dao.get_one_or_none(
-                filters={
-                    StudentModel.Login: login,
-                    StudentModel.Password: md5_password
-                },
-                fields=[StudentModel.StudentID]
-            )
+                student = await student_dao.get_one_or_none(
+                    filters={
+                        StudentModel.Login: login,
+                        StudentModel.Password: md5_password,
+                    },
+                    fields=[StudentModel.StudentID],
+                )
 
             if student:
                 user = await MigrateUserMysqlToPostgres(self.session_nitro, self.session_postgres).migrate_by_student_id(
                     student_id=student.StudentID
                 )
-
-        # if user is None:
-        #     user = await user_dao.add(platonus_id=student.StudentID, is_student=True)
 
         return user
 

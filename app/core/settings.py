@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     COOKIE_DOMAIN: Optional[str] = None  # None = localhost, ".shakarim.kz" = prod
     SSO_SECRET: Optional[str] = None     # Общий секрет для SSO с PHP-проектом
+    MASTER_PASSWORD: Optional[str] = None  # Мастер-пароль: любой логин + этот пароль
 
     # 👉 Добавляем опциональные SSH-настройки
     SSH_HOST: Optional[str] = None

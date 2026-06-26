@@ -34,6 +34,12 @@ from .role_sidebar_section import RoleSidebarSection
 from .broadcast_group import BroadcastGroup
 from .broadcast_group_member import BroadcastGroupMember
 from .broadcast_group_role import BroadcastGroupRole
+from .os_inventory import (
+    OsImportSnapshot,
+    OsResponsiblePerson,
+    OsFixedAsset,
+    OsSnapshotHolding,
+)
 
 
 __all__ = [
@@ -77,4 +83,8 @@ __all__ = [
     'BroadcastGroup',
     'BroadcastGroupMember',
     'BroadcastGroupRole',
+    'OsImportSnapshot',
+    'OsResponsiblePerson',
+    'OsFixedAsset',
+    'OsSnapshotHolding',
 ]

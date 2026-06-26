@@ -632,3 +632,209 @@ class MonitoringPunctualityMixin:
             )
 
         return sorted(items, key=lambda item: item.full_name)
+
+    @staticmethod
+    def _format_display_date(value: datetime.date) -> str:
+        return value.strftime("%d.%m.%Y")
+
+    async def _collect_late_arrival_rows_for_period(
+        self,
+        *,
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ) -> list[dict[str, object]]:
+        if self.session_perco is None:
+            raise RuntimeError("Perco session is required")
+        if self.session_nitro is None or self.session_postgres is None:
+            raise RuntimeError("Nitro and Postgres sessions are required")
+
+        active_staff_rows = await self._load_active_staff_rows()
+        if not active_staff_rows:
+            return []
+
+        platonus_ids = [
+            int(row["platonus_id"])
+            for row in active_staff_rows
+            if row.get("platonus_id") is not None
+        ]
+        if not platonus_ids:
+            return []
+
+        start_dt = datetime.datetime.combine(start_date, datetime.time.min).replace(microsecond=0)
+        end_dt = datetime.datetime.combine(end_date, datetime.time.max).replace(microsecond=0)
+        first_in_rows = await self._monitoring_dao().get_first_in_by_person_day(
+            platonus_ids=platonus_ids,
+            start_dt=start_dt,
+            end_dt=end_dt,
+        )
+        first_in_by_person_day: dict[tuple[int, datetime.date], datetime.datetime] = {}
+        for row in first_in_rows:
+            personid = row.get("personid")
+            access_date = row.get("access_date")
+            first_in_datetime = row.get("first_in_datetime")
+            if (
+                personid is None
+                or not isinstance(access_date, datetime.date)
+                or not isinstance(first_in_datetime, datetime.datetime)
+            ):
+                continue
+            first_in_by_person_day[(int(personid), access_date)] = first_in_datetime
+
+        user_by_platonus = await self._platonus_to_user_id_map(platonus_ids)
+        user_ids = [uid for uid in user_by_platonus.values() if uid is not None]
+        schedules_by_user = await self._load_custom_schedules(
+            user_ids=user_ids,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        work_days = self._iter_weekdays(start_date, end_date)
+
+        prepared_rows: list[dict[str, object]] = []
+        for staff_row in active_staff_rows:
+            pid_raw = staff_row.get("platonus_id")
+            if pid_raw is None:
+                continue
+            platonus_id = int(pid_raw)
+            user_id = user_by_platonus.get(platonus_id)
+
+            lastname = normalize_name_part(staff_row.get("lastname"))  # type: ignore[arg-type]
+            firstname = normalize_name_part(staff_row.get("firstname"))  # type: ignore[arg-type]
+            patronomic = normalize_name_part(staff_row.get("patronomic"))  # type: ignore[arg-type]
+            full_name = build_full_name(
+                lastname=lastname,
+                firstname=firstname,
+                patronomic=patronomic,
+            )
+            structural_subdivision_id = staff_row.get("structural_subdivision_id")
+            structural_subdivision_name = uppercase_first(staff_row.get("structural_subdivision_name"))  # type: ignore[arg-type]
+            position_name = uppercase_first(staff_row.get("position_name"))  # type: ignore[arg-type]
+            rate = float(staff_row.get("rate")) if staff_row.get("rate") is not None else None
+            employment_status = localize_absence_status(staff_row.get("absence_status"), "ru") or "Штатный режим"
+
+            for work_day in work_days:
+                first_in_datetime = first_in_by_person_day.get((platonus_id, work_day))
+                if first_in_datetime is None:
+                    continue
+
+                shift_start_time, shift_end_time, _ = self._resolve_schedule(
+                    user_id=user_id,
+                    access_date=work_day,
+                    schedules_by_user=schedules_by_user,
+                )
+                arrival_status = self._calculate_arrival_status(
+                    first_in_datetime=first_in_datetime,
+                    shift_start_time=shift_start_time,
+                )
+                if arrival_status != ArrivalStatus.LATE:
+                    continue
+
+                prepared_rows.append(
+                    {
+                        "TutorID": platonus_id,
+                        "ФИО": full_name,
+                        "structural_subdivision_id": structural_subdivision_id,
+                        "Подразделение": structural_subdivision_name,
+                        "Должность": position_name,
+                        "Ставка": rate,
+                        "Статус": employment_status,
+                        "Дата и время первого входа": first_in_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                        "first_in_sort": first_in_datetime,
+                        "График работы": (
+                            f"{self._format_time(shift_start_time)} - {self._format_time(shift_end_time)}"
+                        ),
+                        "Примечание": "",
+                    }
+                )
+
+        prepared_rows.sort(
+            key=lambda row: (
+                str(row.get("ФИО") or ""),
+                row.get("first_in_sort") or datetime.datetime.min,
+            )
+        )
+        return prepared_rows
+
+    async def export_staff_punctuality_period_late_excel(
+        self,
+        *,
+        start_date: datetime.date,
+        end_date: datetime.date,
+        structural_subdivision_id: int | None,
+        search: str | None,
+    ) -> bytes:
+        if end_date < start_date:
+            raise HTTPException(status_code=400, detail="end_date must be greater than or equal to start_date")
+
+        prepared_rows = await self._collect_late_arrival_rows_for_period(
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        if structural_subdivision_id is not None:
+            prepared_rows = [
+                row
+                for row in prepared_rows
+                if row.get("structural_subdivision_id") == structural_subdivision_id
+            ]
+
+        query = (search or "").strip().lower()
+        if query:
+            prepared_rows = [
+                row
+                for row in prepared_rows
+                if query in str(row.get("ФИО") or "").lower()
+                or query in str(row.get("Подразделение") or "").lower()
+                or query in str(row.get("Должность") or "").lower()
+                or query in str(row.get("Статус") or "").lower()
+            ]
+
+        for index, row in enumerate(prepared_rows, start=1):
+            row["№"] = index
+
+        columns = [
+            "№",
+            "TutorID",
+            "ФИО",
+            "Подразделение",
+            "Должность",
+            "Ставка",
+            "Статус",
+            "Дата и время первого входа",
+            "График работы",
+            "Примечание",
+        ]
+        export_rows = [{column: row.get(column) for column in columns} for row in prepared_rows]
+        df = pd.DataFrame(export_rows, columns=columns)
+        html_table = df.to_html(index=False, na_rep="", border=1, justify="left")
+
+        period_label = (
+            f"{self._format_display_date(start_date)}-{self._format_display_date(end_date)}"
+        )
+        letter_date = self._format_display_date(end_date)
+        header_html = f"""<table border="0">
+<tbody>
+<tr>
+  <td colspan="5"></td>
+  <td colspan="5">«Шәкәрім университеті» КеАҚ<br/>Басқарма төрағасы – ректор<br/>Д.Орынбековке</td>
+</tr>
+<tr>
+  <td colspan="2"></td>
+  <td colspan="3">Қызметтік хат<br/>{letter_date}</td>
+  <td colspan="5"></td>
+</tr>
+<tr><td colspan="10"><br/></td></tr>
+<tr>
+  <td colspan="10">
+    {period_label} ж. аралығында жұмыс уақытынан кешігіп келгендер тізімі ұсынылады.
+    Қызметкерлердің еңбек тәртібін бұзуларына байланысты жұмысқа кешігулерін ескере отырып,
+    түсініктеме алып, шара қолдануды қарастыруыңызды сұраймын.
+  </td>
+</tr>
+<tr><td colspan="10"><br/></td></tr>
+</tbody>
+</table>"""
+        html_doc = f"""<html>
+<head><meta charset="utf-8" /></head>
+<body>{header_html}{html_table}</body>
+</html>"""
+        return html_doc.encode("utf-8-sig")
